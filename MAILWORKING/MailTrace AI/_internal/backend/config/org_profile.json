@@ -1,0 +1,13 @@
+{
+  "organization": "AICTE Cyber Security Cell (demo tenant)",
+  "domains": ["aicte-india.org"],
+  "esp": "google",
+  "vips": [
+    {"name": "Dr. Ramesh Verma", "role": "Member Secretary", "email": "ms@aicte-india.org"},
+    {"name": "Prof. Anita Desai", "role": "Director (Finance)", "email": "director.finance@aicte-india.org"},
+    {"name": "Sunil Mehta", "role": "Head, Cyber Security Cell", "email": "cybercell@aicte-india.org"}
+  ],
+  "partners": ["nic.in", "ugc.gov.in", "nta.ac.in", "sbi.co.in"],
+  "retention_days": 180,
+  "masking": {"mask_recipient_pii": true, "mask_body_in_reports": false}
+}

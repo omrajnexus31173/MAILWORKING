@@ -1,0 +1,23 @@
+{
+  "trained_at": "2026-09-11T11:09:20Z",
+  "dataset": "zefang-liu/phishing-email-dataset + synthetic Indian-context augmentation",
+  "train_rows": 15968,
+  "holdout_rows": 2713,
+  "accuracy": 0.9886,
+  "roc_auc": 0.9984,
+  "phishing_precision": 0.9866,
+  "phishing_recall": 0.9837,
+  "phishing_f1": 0.9851,
+  "confusion_matrix": [
+    [
+      1655,
+      14
+    ],
+    [
+      17,
+      1027
+    ]
+  ],
+  "model": "TF-IDF(1-2gram, 80k feats) + LogisticRegression(C=6, balanced)",
+  "sklearn_version": "1.6.1"
+}

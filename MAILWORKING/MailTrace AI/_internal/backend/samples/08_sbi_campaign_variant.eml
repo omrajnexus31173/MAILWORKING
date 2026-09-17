@@ -1,0 +1,33 @@
+Return-Path: <noreply@sbi-kyc-verify.top>
+Delivered-To: registrar@aicte-india.org
+Received: from mx.google.com (mx.google.com. [209.85.220.41])
+        by mail.aicte-india.org with ESMTPS id b9si1102834pgl.77.2026.09.10.04.19.02
+        for <registrar@aicte-india.org>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 10 Sep 2026 04:19:02 -0700 (PDT)
+Received: from srv-mail01.fasthost.ltd (unknown [5.188.206.14])
+        by mx.google.com with ESMTP id 7e8f9a0b
+        for <registrar@aicte-india.org>;
+        Wed, 10 Sep 2026 04:19:00 -0700 (PDT)
+Received-SPF: fail (google.com: domain of noreply@sbi-kyc-verify.top does not designate 5.188.206.14 as permitted sender) client-ip=5.188.206.14;
+Authentication-Results: mx.google.com;
+       spf=fail smtp.mailfrom=noreply@sbi-kyc-verify.top;
+       dkim=none;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=sbi-kyc-verify.top
+From: "SBI YONO Alerts" <noreply@sbi-kyc-verify.top>
+Reply-To: sbi.kyc.helpdesk2026@gmail.com
+To: registrar@aicte-india.org
+Subject: Your YONO SBI access has been suspended - Re-activate now
+Date: Wed, 10 Sep 2026 16:48:55 +0530
+Message-ID: <20260910111855.7E8F9A0B@srv-mail01.fasthost.ltd>
+X-Mailer: PHPMailer 6.8.0 (https://github.com/PHPMailer/PHPMailer)
+MIME-Version: 1.0
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>Dear Valued Customer,</p>
+<p>Your YONO SBI login has been <b>suspended</b> due to unusual sign-in activity from a new device. To re-activate immediately, verify your net banking credentials and registered mobile number below:</p>
+<p><a href="https://onlinesbi.sbi.kyc-update-portal.top/yono/reactivate?uid=RG7712">Re-activate YONO Access</a></p>
+<p>If not verified within 12 hours your account will be permanently blocked as per RBI guidelines.</p>
+<p>Regards,<br>YONO SBI Security Team</p>
+</body></html>

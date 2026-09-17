@@ -1,0 +1,280 @@
+{
+ "domains": {
+  "aicte-india.org": {
+   "expires": "2032-11-19T15:33:05.047Z",
+   "created": "2009-11-19T15:33:05.047Z",
+   "registrar": "PDR Ltd. d/b/a PublicDomainRegistry.com",
+   "nameservers": [
+    "ns1.aicte-india.org",
+    "ns2.aicte-india.org"
+   ]
+  },
+  "svnit.ac.in": {
+   "created": "2003-03-09T18:20:47.122Z",
+   "expires": "2033-03-09T18:20:47.580Z",
+   "registrar": "ERNET India",
+   "nameservers": [
+    "ns11.bsnl.in",
+    "ns12.bsnl.in"
+   ]
+  },
+  "bit.ly": {
+   "created": "2008-05-17T22:00:00Z",
+   "expires": "2032-05-17T22:00:00Z",
+   "registrar": "Libyan Spider Network (int)",
+   "nameservers": [
+    "ns-1372.awsdns-43.org",
+    "ns-705.awsdns-24.net",
+    "ns-cloud-c1.googledomains.com",
+    "ns-cloud-c3.googledomains.com"
+   ]
+  },
+  "incometax.gov.in": {
+   "created": "2003-07-31T04:00:00.503Z",
+   "expires": "2027-07-31T04:00:00.000Z",
+   "registrar": "National Informatics Centre",
+   "nameservers": [
+    "ns01.incometax.gov.in",
+    "ns02.incometax.gov.in"
+   ]
+  },
+  "razorpay.com": {
+   "created": "2013-08-23T18:36:27Z",
+   "expires": "2027-08-23T18:36:27Z",
+   "registrar": "Gandi SAS",
+   "nameservers": [
+    "ns-1400.awsdns-47.org",
+    "ns-1939.awsdns-50.co.uk",
+    "ns-723.awsdns-26.net",
+    "ns-74.awsdns-09.com"
+   ]
+  },
+  "forms.gle": {
+   "created": "2019-02-12T00:27:29.668Z",
+   "expires": "2027-02-12T00:27:29.668Z",
+   "registrar": "MarkMonitor Inc.",
+   "nameservers": [
+    "ns1.googledomains.com",
+    "ns2.googledomains.com",
+    "ns3.googledomains.com",
+    "ns4.googledomains.com"
+   ]
+  },
+  "scholarships.gov.in": {
+   "created": "2015-01-08T05:31:41.549Z",
+   "expires": "2027-01-08T05:31:41.549Z",
+   "registrar": "National Informatics Centre",
+   "nameservers": [
+    "ns7.nic.in",
+    "ns1.nic.in",
+    "ns10.nic.in",
+    "ns2.nic.in"
+   ]
+  },
+  "b.com": {
+   "created": "1993-12-01T05:00:00Z",
+   "expires": "2026-12-08T16:38:25Z",
+   "registrar": "RESERVED-Internet Assigned Numbers Authority",
+   "nameservers": []
+  },
+  "example.com": {
+   "created": "1995-08-14T04:00:00Z",
+   "expires": "2027-08-13T04:00:00Z",
+   "registrar": "RESERVED-Internet Assigned Numbers Authority",
+   "nameservers": [
+    "elliott.ns.cloudflare.com",
+    "hera.ns.cloudflare.com"
+   ]
+  },
+  "xn--pypal-4ve.com": {
+   "created": "2005-01-20T07:45:49Z",
+   "expires": "2027-01-20T07:45:49Z",
+   "registrar": "MarkMonitor Inc.",
+   "nameservers": [
+    "ns1.markmonitor.com",
+    "ns3.markmonitor.com"
+   ]
+  }
+ },
+ "209.85.220.41": {
+  "country": "United States",
+  "countryCode": "US",
+  "regionName": "California",
+  "city": "Mountain View",
+  "lat": 37.3861,
+  "lon": -122.084,
+  "timezone": "America/Los_Angeles",
+  "isp": "Google LLC",
+  "org": "Google LLC",
+  "as": "AS15169 Google LLC",
+  "asname": "GOOGLE",
+  "mobile": false,
+  "proxy": true,
+  "hosting": true
+ },
+ "5.188.206.14": {
+  "country": "United States",
+  "countryCode": "US",
+  "regionName": "Colorado",
+  "city": "Golden",
+  "lat": 39.7858,
+  "lon": -105.181,
+  "timezone": "America/Denver",
+  "isp": "KREZ999AS",
+  "org": "Technology Advanced Investment Limited",
+  "as": "AS200391 KREZ 999 EOOD",
+  "asname": "KREZ999AS",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true
+ },
+ "197.210.53.18": {
+  "country": "Nigeria",
+  "countryCode": "NG",
+  "regionName": "Kano State",
+  "city": "Kumbotso",
+  "lat": 11.89,
+  "lon": 8.503,
+  "timezone": "Africa/Lagos",
+  "isp": "MTN NIGERIA Communication limited",
+  "org": "IMS Implementation",
+  "as": "AS29465 MTN NIGERIA Communication limited",
+  "asname": "VCG-AS",
+  "mobile": true,
+  "proxy": false,
+  "hosting": false
+ },
+ "162.55.90.10": {
+  "country": "Germany",
+  "countryCode": "DE",
+  "regionName": "Saxony",
+  "city": "Falkenstein",
+  "lat": 50.4777,
+  "lon": 12.3649,
+  "timezone": "Europe/Berlin",
+  "isp": "Hetzner Online GmbH",
+  "org": "Hetzner",
+  "as": "AS24940 Hetzner Online GmbH",
+  "asname": "HETZNER-AS",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true,
+  "reverse": "static.10.90.55.162.clients.your-server.de"
+ },
+ "103.126.10.20": {
+  "country": "Indonesia",
+  "countryCode": "ID",
+  "regionName": "West Kalimantan",
+  "city": "Sekadau",
+  "lat": 0.01667,
+  "lon": 110.9,
+  "timezone": "Asia/Pontianak",
+  "isp": "PT Lintas Telematika Nusantara",
+  "org": "",
+  "as": "AS138106 PT Lintas Telematika Nusantara",
+  "asname": "LTN-AS-ID",
+  "mobile": false,
+  "proxy": false,
+  "hosting": false,
+  "reverse": "host-20.subnet-103-126-10.ltn.net.id"
+ },
+ "209.85.219.180": {
+  "country": "United States",
+  "countryCode": "US",
+  "regionName": "California",
+  "city": "Mountain View",
+  "lat": 37.3861,
+  "lon": -122.084,
+  "timezone": "America/Los_Angeles",
+  "isp": "Google LLC",
+  "org": "Google LLC",
+  "as": "AS15169 Google LLC",
+  "asname": "GOOGLE",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true,
+  "reverse": "mail-yb1-f180.google.com"
+ },
+ "102.130.113.9": {
+  "country": "South Africa",
+  "countryCode": "ZA",
+  "regionName": "Western Cape",
+  "city": "Cape Town",
+  "lat": -34.0594,
+  "lon": 18.832,
+  "timezone": "Africa/Johannesburg",
+  "isp": "Hostafrica",
+  "org": "",
+  "as": "AS328364 Host Africa (Pty) Ltd",
+  "asname": "Host-Africa-AS",
+  "mobile": false,
+  "proxy": true,
+  "hosting": true
+ },
+ "164.100.14.101": {
+  "country": "India",
+  "countryCode": "IN",
+  "regionName": "National Capital Territory of Delhi",
+  "city": "New Delhi",
+  "lat": 28.6327,
+  "lon": 77.2198,
+  "timezone": "Asia/Kolkata",
+  "isp": "National Informatics Centre",
+  "org": "NDCSP Delhi",
+  "as": "AS4758 National Informatics Centre",
+  "asname": "NICNET-VSNL-BOARDER-AP",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true
+ },
+ "2607:f8b0:4864:20::102e": {
+  "country": "United States",
+  "countryCode": "US",
+  "regionName": "California",
+  "city": "Mountain View",
+  "lat": 37.422,
+  "lon": -122.084,
+  "timezone": "America/Los_Angeles",
+  "isp": "Google LLC",
+  "org": "Google LLC",
+  "as": "AS15169 Google LLC",
+  "asname": "GOOGLE",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true,
+  "reverse": "mail-pj1-x102e.google.com"
+ },
+ "167.89.12.34": {
+  "country": "United States",
+  "countryCode": "US",
+  "regionName": "Colorado",
+  "city": "Denver",
+  "lat": 39.7475,
+  "lon": -104.99,
+  "timezone": "America/Denver",
+  "isp": "SendGrid, Inc.",
+  "org": "SendGrid, Inc.",
+  "as": "AS11377 SendGrid, Inc.",
+  "asname": "SENDGRID",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true,
+  "reverse": "o1.ptr3830.quanor.com"
+ },
+ "139.59.62.10": {
+  "country": "India",
+  "countryCode": "IN",
+  "regionName": "Karnataka",
+  "city": "Bengaluru",
+  "lat": 12.9753,
+  "lon": 77.591,
+  "timezone": "Asia/Kolkata",
+  "isp": "DigitalOcean, LLC",
+  "org": "DigitalOcean, LLC",
+  "as": "AS14061 DigitalOcean, LLC",
+  "asname": "DIGITALOCEAN-ASN",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true
+ }
+}

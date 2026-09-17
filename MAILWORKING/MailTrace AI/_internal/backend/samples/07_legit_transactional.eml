@@ -1,0 +1,30 @@
+Return-Path: <bounces+123456-abcd-cybercell=aicte-india.org@em1234.razorpay.com>
+Received: from o1.em1234.razorpay.com (o1.em1234.razorpay.com [167.89.12.34])
+        by mx.aicte-india.org with ESMTPS id x22si99887766pfb.55.2026.09.09.05.11.43
+        for <cybercell@aicte-india.org>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Tue, 09 Sep 2026 05:11:43 -0700 (PDT)
+Received: by filterdrecv-canary-7d8b6c9f5-xk2lp with SMTP id filterdrecv-canary-7d8b6c9f5-xk2lp-1-68C03D7E-2A
+        2026-09-09 12:11:42.512345678 +0000 UTC m=+1234567.891011121
+Authentication-Results: mx.aicte-india.org;
+       dkim=pass header.i=@razorpay.com header.s=s1 header.b=Ab12Cd34;
+       spf=pass (google.com: domain of bounces+123456-abcd-cybercell=aicte-india.org@em1234.razorpay.com designates 167.89.12.34 as permitted sender) smtp.mailfrom="bounces+123456-abcd-cybercell=aicte-india.org@em1234.razorpay.com";
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=razorpay.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=razorpay.com; s=s1; h=from:subject:to; bh=abc=; b=Ab12Cd34
+From: Razorpay <no-reply@razorpay.com>
+To: cybercell@aicte-india.org
+Subject: Payment receipt for INR 2,500.00 - Order #order_NxQ8kZ2mP1
+Date: Tue, 09 Sep 2026 12:11:42 +0000
+Message-ID: <a1b2c3d4e5f6a7b8@ismtpd0123p1maa1.sendgrid.net>
+List-Unsubscribe: <mailto:unsubscribe@razorpay.com>
+Precedence: bulk
+MIME-Version: 1.0
+Content-Type: text/html; charset="UTF-8"
+
+<html><body style="font-family:Helvetica">
+<p>Hi,</p>
+<p>Your payment of <b>INR 2,500.00</b> to <b>CyberSec Conference 2026</b> was successful.</p>
+<table><tr><td>Payment ID</td><td>pay_NxQ9aB3cD4eF5g</td></tr><tr><td>Order ID</td><td>order_NxQ8kZ2mP1</td></tr><tr><td>Method</td><td>UPI</td></tr><tr><td>Date</td><td>09 Sep 2026, 17:41 IST</td></tr></table>
+<p>You can download the invoice from your dashboard: <a href="https://dashboard.razorpay.com/app/payments/pay_NxQ9aB3cD4eF5g">View payment</a></p>
+<p>This is an automated message. For help, visit <a href="https://razorpay.com/support/">razorpay.com/support</a>.</p>
+</body></html>

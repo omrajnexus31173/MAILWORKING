@@ -1,0 +1,49 @@
+Delivered-To: director.finance@aicte-india.org
+Received: by 2002:a05:6a20:1234:b0:1c4:5678:9abc with SMTP id x12csp1234567pxf;
+        Thu, 11 Sep 2026 02:03:11 -0700 (PDT)
+X-Received: by 2002:a17:90b:4a8e:b0:2d9:1f2e:3c4d with SMTP id r14-20020a17090b4a8e00b002d91f2e3c4dmr1234567pjw.5.1757581391123;
+        Thu, 11 Sep 2026 02:03:11 -0700 (PDT)
+Return-Path: <rameshverma.aicte.office@gmail.com>
+Received: from mail-pj1-x102e.google.com (mail-pj1-x102e.google.com. [2607:f8b0:4864:20::102e])
+        by mx.google.com with ESMTPS id d3si4821349plr.201.2026.09.11.02.03.10
+        for <director.finance@aicte-india.org>
+        (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);
+        Thu, 11 Sep 2026 02:03:10 -0700 (PDT)
+Received-SPF: pass (google.com: domain of rameshverma.aicte.office@gmail.com designates 2607:f8b0:4864:20::102e as permitted sender) client-ip=2607:f8b0:4864:20::102e;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=abcDEF12;
+       spf=pass (google.com: domain of rameshverma.aicte.office@gmail.com designates 2607:f8b0:4864:20::102e as permitted sender) smtp.mailfrom=rameshverma.aicte.office@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20230601;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject:date:message-id:reply-to;
+        bh=abc123=; b=abcDEF12
+X-Google-Original-From: "Dr. Ramesh Verma" <ms@aicte-india.org>
+From: "Dr. Ramesh Verma" <rameshverma.aicte.office@gmail.com>
+Date: Thu, 11 Sep 2026 14:33:09 +0530
+Message-ID: <CAF+x9Yk3ZQ8pL2mN4rT6vW8xA0bC2dE4fG6hI8jK0lM2nO4pQ@mail.gmail.com>
+Subject: Re: Urgent - vendor payment before 3 PM
+To: director.finance@aicte-india.org
+Content-Type: text/plain; charset="UTF-8"
+
+Anita,
+
+I am in a review meeting with the Ministry and cannot take calls. We need to
+release an urgent vendor payment of Rs. 18,74,000 for the NEAT consultancy
+invoice before 3 PM today, otherwise the MoU lapses.
+
+The vendor has changed their bank account. Please process an RTGS to the new
+beneficiary details below and send me the UTR number on WhatsApp
+(+91 98765 43210). Keep this confidential until the board is informed.
+
+Beneficiary: Skyline Edutech Solutions Pvt Ltd
+Account No: 50100234567891
+IFSC: HDFC0001234
+Bank: HDFC Bank, Nehru Place, New Delhi
+
+I will sign the note file when I return. Please treat this as priority.
+
+Regards,
+Dr. Ramesh Verma
+Member Secretary, AICTE
+
+Sent from my iPhone
