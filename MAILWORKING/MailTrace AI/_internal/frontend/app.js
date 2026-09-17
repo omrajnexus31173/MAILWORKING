@@ -213,7 +213,7 @@ const GLOBE_LEGEND = `<div class="globe-legend">
 </div>`;
 
 function globeShell(id, height) {
-  return `<div class="globe-wrap" id="${id}" style="height:${height || 440}px">
+  return `<div class="globe-wrap" id="${id}" style="height:${height || "clamp(300px, 46vh, 460px)"}">
     <div class="globe-hud"><div class="l"><h3 style="margin:0">Global threat origins</h3>
       <div class="mini" id="${id}-sub">real geolocated origins of analysed mail</div></div>
       <div class="r globe-stats" id="${id}-stats"></div></div>
@@ -505,7 +505,7 @@ routes.dashboard = async () => {
     </div>
 
     <div class="card pad0" style="margin-bottom:16px" data-reveal>
-      ${globeShell("globe-main", 460)}
+      ${globeShell("globe-main", "clamp(320px, 48vh, 470px)")}
       <div style="padding:10px 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--stroke)">
         <span class="mini">${t.located || 0} of ${t.cases || 0} cases plotted from real GeoIP coordinates${t.no_coordinates ? ` · <b>${t.no_coordinates}</b> country-level only (no coordinates returned — not plotted as precise pins)` : ""}${t.unknown ? ` · ${t.unknown} unresolved` : ""}</span>
         <span class="mini">${t.anonymised ? `${t.anonymised} via anonymising infrastructure · ` : ""}${t.tor ? `${t.tor} via Tor exit nodes` : ""}${!t.tor && !t.anonymised ? "drag to rotate · scroll to zoom · hover a node for detail" : ""}</span>
@@ -707,7 +707,7 @@ function renderCase(c, adhoc = false) {
       <div class="card" style="margin-bottom:14px"><h2>Recommended actions</h2><ol class="reco" style="margin:0;padding-left:18px;font-size:13px">${recommendations(r).map(x => `<li>${esc(x)}</li>`).join("")}</ol></div>
       ${c.related?.length ? `<div class="card"><h2>Related cases (shared infrastructure)</h2>${c.related.map(x => `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><a href="#/case/${x.case_id}"><b style="color:${scoreColor(x.score)}">${Math.round(x.score)}</b> ${esc(x.subject)}</a><div class="chip-row">${x.shared.map(i => `<span class="tag">${esc(i)}</span>`).join("")}</div></div>`).join("")}</div>` : ""}</div></div>`,
     () => `<div class="card pad0" style="margin-bottom:14px">
-        ${globeShell("globe-case", 430)}
+        ${globeShell("globe-case", "clamp(300px, 44vh, 430px)")}
         <div style="padding:9px 14px;border-top:1px solid var(--stroke);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
           <span class="mini" id="globe-case-note">origin and relay hops plotted from real GeoIP coordinates</span>
           <span class="mini">${(r.trace_path || []).filter(p => p.lat != null).length} of ${(r.trace_path || []).length} hops geolocated</span>
