@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 FRONTEND = os.path.join(os.path.dirname(ROOT), "frontend")
 SAMPLES = os.path.join(ROOT, "samples")
 
-app = FastAPI(title="MailTrace AI", version="1.2.0", description="AI-Powered Email Threat Detection, GeoLocation and Forensic Intelligence Platform")
+app = FastAPI(title="MailTrace AI", version="1.3.0", description="AI-Powered Email Threat Detection, GeoLocation and Forensic Intelligence Platform")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ---- live alert stream (SSE) ----
@@ -93,6 +93,78 @@ async def analyze_batch(files: List[UploadFile] = File(...), x_analyst: Optional
         except Exception as e:
             out.append({"file": f.filename, "error": str(e)})
     return out
+
+@app.get("/api/geo/hotspots")
+def geo_hotspots(mailbox: str = "", limit: int = 400):
+    """Real geospatial aggregation of analysed cases for the 3D globe (no synthetic points)."""
+    return store.geo_hotspots(mailbox=mailbox, limit=max(1, min(limit, 1000)))
+
+
+@app.post("/api/analyze/stream")
+async def analyze_stream(file: UploadFile = File(None), raw_text: str = Form(None), persist: bool = Form(True),
+                         x_analyst: Optional[str] = Header(None)):
+    """
+    Same analysis as /api/analyze, but streams NDJSON progress events emitted by the real pipeline
+    (one line per stage transition, then the final result). The UI animates the investigation
+    pipeline from these events — a stage can only light up when the work behind it has finished.
+    """
+    if file is not None:
+        raw = await file.read(); name = file.filename or "upload.eml"
+    elif raw_text:
+        raw = raw_text.encode("utf-8", "surrogateescape"); name = "pasted.eml"
+    else:
+        raise HTTPException(400, "Provide an .eml file or raw_text")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(413, "Message too large (25 MB limit)")
+    return _ndjson_stream(raw, name, _actor(x_analyst), persist, "upload")
+
+
+def _ndjson_stream(raw: bytes, name: str, actor: str, persist: bool, source: str):
+    loop = asyncio.get_event_loop()
+    q: asyncio.Queue = asyncio.Queue()
+
+    def emit(sid, status, payload):
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "stage", "id": sid, "status": status, **(payload or {})})
+
+    def work():
+        try:
+            org = load_org_profile()
+            result = analyze_email(raw, org, on_stage=emit)
+            if persist:
+                meta = store.save_case(result, raw, name, actor=actor, source=source)
+                result["case_id"] = meta["case_id"]; result["campaign_id"] = meta["campaign_id"]
+                if result["score"]["score"] >= 60:
+                    _publish({"type": "alert", "case_id": result["id"], "score": result["score"]["score"], "label": result["score"]["label"],
+                              "subject": result["headers"]["subject"], "sender": result["headers"]["from"]["address"],
+                              "threat": result["threat"]["primary"], "origin": (result["attribution"].get("origin_geo") or {}).get("country"), "ts": time.time()})
+                else:
+                    _publish({"type": "case", "case_id": result["id"], "score": result["score"]["score"], "label": result["score"]["label"],
+                              "subject": result["headers"]["subject"], "ts": time.time()})
+            intel.flush_cache()
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "result", "result": json.loads(json.dumps(result, default=str))})
+        except Exception as e:
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(e)})
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, None)
+
+    threading.Thread(target=work, daemon=True).start()
+
+    async def gen():
+        while True:
+            evt = await q.get()
+            if evt is None:
+                break
+            yield json.dumps(evt, default=str) + "\n"
+    return StreamingResponse(gen(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/samples/{name}/analyze/stream")
+async def analyze_sample_stream(name: str, persist: bool = Form(True), x_analyst: Optional[str] = Header(None)):
+    """Bundled demo corpus analysed through the same streaming pipeline (progress events are real)."""
+    p = os.path.join(SAMPLES, os.path.basename(name))
+    if not os.path.exists(p): raise HTTPException(404, "sample not found")
+    return _ndjson_stream(open(p, "rb").read(), os.path.basename(p), _actor(x_analyst), persist, "sample")
+
 
 @app.get("/api/samples")
 def samples():

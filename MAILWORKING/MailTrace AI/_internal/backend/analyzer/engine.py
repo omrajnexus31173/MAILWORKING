@@ -198,7 +198,7 @@ def attribute_origin(hdr, geo: Dict[str, Any], dom_intel: Dict[str, Any], score)
               "direct_spoof": "Direct header spoofing", "anonymised_infra": "Anonymised infrastructure (Tor/VPN/proxy)", "bulk_esp_abuse": "Abuse of bulk email service",
               "freemail_account": "Free webmail account", "legitimate": "Legitimate sender", "undetermined": "Undetermined"}
     return {"scenario": scenario, "scenario_label": pretty[scenario], "confidence": round(min(0.95, conf), 2), "location_confidence": round(min(0.95, loc_conf), 2),
-            "reasons": reasons, "origin_ip": oip, "origin_geo": {k: g.get(k) for k in ("country", "countryCode", "regionName", "city", "isp", "org", "as", "lat", "lon", "category", "tags", "reverse", "timezone")} if g else None}
+            "reasons": reasons, "origin_ip": oip, "origin_geo": {k: g.get(k) for k in ("country", "countryCode", "regionName", "city", "isp", "org", "as", "lat", "lon", "category", "tags", "reverse", "timezone", "geo_precision", "location_label")} if g else None}
 
 def infra_findings_from(geo: Dict[str, Any], hdr, dom_intel: Dict[str, Any], url_dom_intel: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
@@ -269,22 +269,63 @@ def build_graph(result: Dict[str, Any]) -> Dict[str, Any]:
         c = n("upi:" + u, "upi", u); e(em, c, "requests_payment_to")
     return {"nodes": list(nodes.values()), "edges": edges}
 
-def analyze_email(raw: bytes, org_profile: Dict[str, Any] = None, do_dns: bool = True, live: bool = True) -> Dict[str, Any]:
+# Canonical pipeline stages, in the order the investigation narrative presents them.
+# The reporting/UI layer subscribes to these; events are emitted by the *real* code paths, so a
+# stage only ever completes when the work it describes has actually finished.
+PIPELINE_STAGES = ["ingest", "headers", "sender", "domain", "auth", "urls", "content", "ai", "geo", "forensic", "verdict"]
+
+def analyze_email(raw: bytes, org_profile: Dict[str, Any] = None, do_dns: bool = True, live: bool = True,
+                  on_stage: Any = None) -> Dict[str, Any]:
     """
     live=True  : full analysis (live SPF/DKIM/DMARC, GeoIP, RDAP, PTR) — 1-9 s for never-seen infrastructure.
     live=False : *triage pass* — identical parsing, header forensics on recorded Authentication-Results, NLP, URL and
                  attachment analysis, cached/seeded GeoIP only; no network round-trips (~20-60 ms). Bulk ingestion runs
                  this first on every message so provisional scores exist within seconds, then enriches worst-first.
+
+    on_stage(stage_id, status, payload) — optional progress reporter. Called with status="run" when a stage starts
+    and status="done"/"fail" when the real work behind it finishes; payload carries the *actual* artefacts found
+    (counts, verdicts, coordinates) so a visualisation can never show progress that did not happen.
     """
     t0 = time.time()
+    def stage(sid, status="done", **payload):
+        if on_stage is None:
+            return
+        try:
+            on_stage(sid, status, {"elapsed_ms": int((time.time() - t0) * 1000), "live": bool(live and do_dns), **payload})
+        except Exception:
+            pass                                            # a broken listener must never break an analysis
     if not live:
         do_dns = False
     org = org_profile or load_org_profile()
     org_domains = [d.lower() for d in org.get("domains", [])]
     vips = org.get("vips", [])
+    stage("ingest", "done", bytes=len(raw))
+    stage("headers", "run")
     hdr = header_forensics.analyze_headers(raw, org_domains, do_dns=do_dns)
+    stage("headers", "done", hops=len(hdr.get("hops", [])), subject=(hdr.get("subject") or "")[:80],
+          findings=len(hdr.get("findings", [])))
     msg = hdr.pop("_msg")
+    stage("sender", "done", address=hdr["from"]["address"], display_name=hdr["from"].get("name") or "",
+          reply_to=hdr["reply_to"]["address"] or None, return_path=hdr["return_path"]["address"] or None,
+          freemail=hdr["from"]["registered_domain"] in FREEMAIL)
+    stage("domain", "run", domain=hdr["from"]["registered_domain"])
+    # phase 1 of domain analysis is pure header work (identify the sender's registered domain);
+    # phase 2 (RDAP age / registrar / resolution) completes after the enrichment pass below
+    stage("domain", "done", domain=hdr["from"]["registered_domain"], display_domain=hdr["from"]["domain"],
+          freemail=hdr["from"]["registered_domain"] in FREEMAIL, phase="parsed")
+    stage("auth", "run")
+    stage("auth", "done", spf=hdr["auth"]["spf"], dkim=hdr["auth"]["dkim"], dmarc=hdr["auth"]["dmarc"],
+          dmarc_policy=hdr["auth"].get("dmarc_policy"), spf_detail=hdr["auth"]["live"].get("spf_detail") or "",
+          dkim_crypto=hdr["auth"].get("dkim_crypto_verified"))
+    stage("content", "run")
     cont = content.analyze_content(msg, hdr["subject"], hdr["from"]["registered_domain"], org_domains, vips)
+    stage("urls", "done", urls=len(cont["urls"]["urls"]), domains=len(cont["urls"]["domains"]),
+          risky_urls=sum(1 for u in cont["urls"]["urls"] if (u.get("risk") or 0) >= 30),
+          attachments=len(cont["attachments"]["attachments"]),
+          max_attachment_risk=cont["attachments"].get("max_risk", 0))
+    stage("content", "done", cues=len(cont["features"].get("cues", {})), cue_score=cont["features"].get("cue_score", 0),
+          bec_patterns=list(cont["features"].get("bec_patterns", {}).keys()),
+          phishing_probability=cont["nlp"].get("phishing_probability"))
 
     # VIP impersonation
     fn = (hdr["from"]["name"] or "").lower()
@@ -304,6 +345,7 @@ def analyze_email(raw: bytes, org_profile: Dict[str, Any] = None, do_dns: bool =
     ips = list(dict.fromkeys(ips))
     from_reg = hdr["from"]["registered_domain"]
     url_domains = [d for d in cont["urls"]["domains"] if d and d not in ESP_ALL and d != from_reg][:4]
+    stage("geo", "run", ips=len(ips))
     with ThreadPoolExecutor(max_workers=8) as ex:
         f_geo = ex.submit(intel.geolocate, ips, live)
         f_dom = ex.submit(intel.domain_rdap, from_reg) if from_reg and from_reg not in FREEMAIL and do_dns else None
@@ -320,13 +362,32 @@ def analyze_email(raw: bytes, org_profile: Dict[str, Any] = None, do_dns: bool =
         ptr = f_ptr.result() if f_ptr else None
     if oip and oip in geo and ptr: geo[oip]["reverse"] = ptr
     hdr["_ip_registry"] = ip_reg
+    _og = geo.get(oip, {}) if oip else {}
+    stage("geo", "done", resolved=sum(1 for g in geo.values() if g.get("status") in ("success", "seed")), total=len(geo),
+          origin_ip=oip, country=_og.get("country"), country_code=_og.get("countryCode"), city=_og.get("city"),
+          isp=_og.get("isp"), lat=_og.get("lat"), lon=_og.get("lon"),
+          precision=(_og.get("geo_precision") or {}).get("level"), category=_og.get("category"),
+          tor=bool(_og.get("is_tor")))
+    stage("domain", "done", domain=from_reg, rdap=bool(dom_intel.get("found")), age_days=dom_intel.get("age_days"),
+          registrar=dom_intel.get("registrar"), resolves=dom_intel.get("resolves"),
+          url_domains=len(url_domains), phase="enriched")
     infra = infra_findings_from(geo, hdr, dom_intel, url_intel)
+    stage("ai", "run")
     trust = {"dmarc_pass": hdr["auth"]["dmarc"] == "pass", "domain_age_days": dom_intel.get("age_days") or 0, "freemail": from_reg in FREEMAIL, "domain": from_reg,
              "partner": from_reg in [p.lower() for p in org.get("partners", [])] and hdr["auth"]["dmarc"] == "pass",
              "known_esp_transactional": hdr["auth"]["dmarc"] == "pass" and any(f["code"] == "H-BULK" for f in hdr["findings"]) and not cont["features"]["bec_patterns"]}
     score = compute_score(hdr["findings"], cont["findings"], infra, cont["nlp"].get("phishing_probability"), trust)
+    stage("ai", "done", score=score["score"], verdict=score["verdict"], label=score["label"],
+          model=cont["nlp"].get("model"), phishing_probability=cont["nlp"].get("phishing_probability"),
+          critical=sum(1 for f in hdr["findings"] + cont["findings"] + infra if f["severity"] == "critical"),
+          high=sum(1 for f in hdr["findings"] + cont["findings"] + infra if f["severity"] == "high"))
     threat = classify_threat(hdr, cont, score)
+    stage("forensic", "run")
     attribution = attribute_origin(hdr, geo, dom_intel, score)
+    stage("forensic", "done", scenario=attribution["scenario"], scenario_label=attribution["scenario_label"],
+          confidence=attribution["confidence"], location_confidence=attribution["location_confidence"],
+          findings=len(hdr["findings"] + cont["findings"] + infra), hops=len(hdr.get("hops", [])),
+          campaigns_hint=bool(attribution.get("scenario") not in (None, "undetermined")))
     hdr.pop("_ip_registry", None)
     all_findings = sorted(hdr["findings"] + cont["findings"] + infra, key=lambda f: (["critical", "high", "medium", "low", "info"].index(f["severity"]), -f["weight"]))
 
@@ -363,6 +424,10 @@ def analyze_email(raw: bytes, org_profile: Dict[str, Any] = None, do_dns: bool =
     }
     result["graph"] = build_graph(result)
     result["summary"] = summarize(result)
+    stage("verdict", "done", score=score["score"], verdict=score["verdict"], label=score["label"],
+          threat=threat["primary"], scenario=attribution["scenario"],
+          nodes=len(result["graph"]["nodes"]), edges=len(result["graph"]["edges"]),
+          timing_ms=result["timing_ms"])
     return result
 
 def summarize(r: Dict[str, Any]) -> str:
