@@ -45,7 +45,8 @@
     var nodes = [], edges = [], byId = {};
     var hover = null, selected = null, dragging = null, pan = { x: 0, y: 0, s: 1 };
     var pointer = { x: -999, y: -999, inside: false };
-    var alpha = 1, raf = 0, running = false, sim = true;
+    var alpha = 1, raf = 0, running = false, sim = true, appearT = 0, appearDur = 0;
+    function smooth(x) { return x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x); }
 
     function resize() {
       W = container.clientWidth || 640; H = container.clientHeight || 420;
@@ -112,9 +113,12 @@
         return;
       }
       var i, nd, sp, dim = hover || selected;
+      var elapsed = reduce ? 9999 : performance.now() - appearT;
       // edges
       for (i = 0; i < edges.length; i++) {
         var e = edges[i], a = screen(e.source), b = screen(e.target);
+        var estep = edges.length > 60 ? Math.max(1, 700 / edges.length) : 16;
+        var ae = smooth((elapsed - i * estep) / 420); if (ae <= 0) continue;
         var active = !dim || e.source === dim || e.target === dim;
         var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
         var nx = -(b.y - a.y), ny = (b.x - a.x), nl = Math.sqrt(nx * nx + ny * ny) || 1;
@@ -123,8 +127,8 @@
         ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(cx, cy, b.x, b.y);
         var g = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
         var ca = typeOf(e.source).color, cb = typeOf(e.target).color;
-        g.addColorStop(0, hexA(ca, active ? 0.55 : 0.10));
-        g.addColorStop(1, hexA(cb, active ? 0.55 : 0.10));
+        g.addColorStop(0, hexA(ca, (active ? 0.55 : 0.10) * ae));
+        g.addColorStop(1, hexA(cb, (active ? 0.55 : 0.10) * ae));
         ctx.strokeStyle = g; ctx.lineWidth = (active ? 1.5 : 1) * Math.max(0.7, pan.s);
         ctx.stroke();
         if (active && (hover || selected)) {                       // direction of the relationship
@@ -143,8 +147,10 @@
       // nodes
       for (i = 0; i < nodes.length; i++) {
         nd = nodes[i]; sp = screen(nd);
-        var r = nodeRadius(nd) * pan.s, t = typeOf(nd);
-        var fade = dim ? (nd === dim || neighbor(dim, nd) ? 1 : 0.22) : 1;
+        var nstep = nodes.length > 45 ? Math.max(1.5, 900 / nodes.length) : 20;
+        var an = smooth((elapsed - 260 - i * nstep) / 380); if (an <= 0) continue;
+        var r = nodeRadius(nd) * pan.s * (0.45 + 0.55 * an), t = typeOf(nd);
+        var fade = (dim ? (nd === dim || neighbor(dim, nd) ? 1 : 0.22) : 1) * an;
         if (nd.risk != null && nd.risk >= 60) {                     // threat halo
           ctx.beginPath(); ctx.arc(sp.x, sp.y, r * 2.1, 0, 6.2832);
           ctx.fillStyle = hexA("#ff5f6d", 0.07 * fade); ctx.fill();
@@ -189,8 +195,9 @@
     function frame() {
       raf = requestAnimationFrame(frame);
       if (sim) { for (var i = 0; i < (low ? 1 : 2); i++) step(); }
-      if (sim || hover || selected) draw(); else { if (alpha > 0) draw(); }
-      if (!sim && !hover && !selected && !dragging) { stop(); }
+      var appearing = appearDur > 0 && (performance.now() - appearT) < appearDur;
+      if (sim || hover || selected || appearing) draw(); else { if (alpha > 0) draw(); }
+      if (!sim && !hover && !selected && !dragging && !appearing) { stop(); }
     }
     function start() { if (!running) { running = true; raf = requestAnimationFrame(frame); } }
     function stop() { running = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
@@ -271,7 +278,9 @@
     var api = {
       setData: function (data) {
         data = data || {};
+        appearT = performance.now();
         var raw = (data.nodes || []).slice(0, 400);
+        appearDur = reduce ? 0 : Math.min(2200, 300 + raw.length * 16 + 520);
         byId = {}; nodes = [];
         for (var i = 0; i < raw.length; i++) {
           var n = Object.assign({}, raw[i]);

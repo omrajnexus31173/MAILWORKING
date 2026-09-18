@@ -6,8 +6,19 @@
 <title>MailTrace AI — Email Threat, GeoLocation & Forensic Intelligence</title>
 <meta name="description" content="AI-powered email threat detection, geolocation and forensic intelligence platform.">
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/motion.css">
 </head>
 <body>
+<!-- cinematic boot: dismissed as soon as the backend reports its real model/enrichment state -->
+<div id="boot">
+  <div class="boot-in">
+    <svg width="54" height="54" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3" stroke="#4de3d4" stroke-width="1.8"/><path d="M3 8l13 9 13-9" stroke="#4de3d4" stroke-width="1.8"/><circle cx="25" cy="23" r="6" fill="#070c16" stroke="#ffb454" stroke-width="1.8"/><path d="M25 20v3l2 2" stroke="#ffb454" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <div style="font:700 20px/1.1 system-ui,sans-serif;letter-spacing:.02em">MailTrace <span style="color:var(--cy)">AI</span></div>
+    <div class="boot-s">Email threat detection · geolocation · forensic intelligence</div>
+    <div class="boot-bar"><i></i></div>
+    <div class="boot-t" id="boot-t">initialising detection engine…</div>
+  </div>
+</div>
 <div id="app">
   <aside class="side">
     <div class="brand">
@@ -42,6 +53,7 @@
 <script src="/static/data/world.js"></script>
 <script src="/static/data/centroids.js"></script>
 <script src="/static/lib/fx.js"></script>
+<script src="/static/lib/motion.js"></script>
 <script src="/static/lib/geo.js"></script>
 <script src="/static/lib/globe.js"></script>
 <script src="/static/lib/graph.js"></script>

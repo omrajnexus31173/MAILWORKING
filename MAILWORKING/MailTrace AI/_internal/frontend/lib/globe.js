@@ -162,6 +162,8 @@
         if (o.mesh) g.remove(o.mesh);
         (o.mats || []).forEach(function (m) { m.dispose(); });
         if (o.geo) o.geo.dispose();
+        if (o.pgeo) o.pgeo.dispose();
+        if (o.packet) g.remove(o.packet);
       }
       list.length = 0;
       pulses.length = 0;
@@ -224,7 +226,11 @@
       var line = new T.Line(g, m);
       line.geometry.setDrawRange(0, 2);
       arcGroup.add(line);
-      arcs.push({ line: line, mesh: line, mats: [m], geo: g, mat: m, curve: curve, t: 0, data: a });
+      // a pulse travelling along the finished arc — traffic on the investigation path
+      var pkGeo = new T.SphereGeometry(0.009, 8, 8);
+      var pkMat = new T.MeshBasicMaterial({ color: 0x9ff4ff, transparent: true, opacity: 0.9, depthWrite: false });
+      var pk = new T.Mesh(pkGeo, pkMat); pk.visible = false; arcGroup.add(pk);
+      arcs.push({ line: line, mesh: line, mats: [m, pkMat], geo: g, mat: m, curve: curve, t: 0, p: Math.random(), packet: pk, pgeo: pkGeo, data: a });
     }
 
     /* ------------------------------------------------------------------ interaction ---- */
@@ -323,13 +329,21 @@
         if (m === hovered) { m.ring.scale.setScalar(1.55); m.ringMat.opacity = 0.85; }
         if (m.beam) m.beam.material.opacity = 0.18 + 0.22 * (0.5 + 0.5 * Math.sin(time * 2.4 + m.phase));
       }
-      // arc growth
+      // arc growth + travelling pulse
       for (var j = 0; j < arcs.length; j++) {
         var a = arcs[j];
         if (a.t < 1) {
           a.t = Math.min(1, a.t + dt * 1.15);
           var n = Math.max(2, Math.floor(a.t * 49));
           a.geo.setDrawRange(0, n);
+        } else if (a.packet) {
+          a.p += dt * 0.3; if (a.p > 1) a.p -= 1;
+          var pt2 = a.curve.getPoint(a.p);
+          a.packet.position.copy(pt2);
+          a.packet.visible = true;
+          var fade = Math.sin(a.p * Math.PI);
+          a.packet.material.opacity = 0.2 + 0.7 * fade;
+          a.packet.scale.setScalar(0.7 + 0.7 * fade);
         }
       }
       // hover pick (throttled)

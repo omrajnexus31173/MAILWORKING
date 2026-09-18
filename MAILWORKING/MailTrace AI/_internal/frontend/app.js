@@ -95,12 +95,15 @@ function navigate() {
   const hash = (location.hash || "#/dashboard").split("?")[0];
   const [_, name, ...rest] = hash.split("/");
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("active", a.dataset.nav === name));
+  // cinematic route change: a light veil sweeps across, then the new view animates in
+  const endWipe = (window.MTmotion && window.MTmotion.route) ? window.MTmotion.route() : () => {};
   disposeVisuals();                                   // free WebGL / canvas resources before the next view
   view.classList.remove("mt-view-in");
   void view.offsetWidth;                              // restart the entry animation
   view.classList.add("mt-view-in");
   const r = (routes[name] || routes.dashboard)(rest.join("/"));
   if (r && r.catch) r.catch(() => {});
+  if (r && r.finally) r.finally(endWipe); else endWipe();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 window.addEventListener("hashchange", navigate);
@@ -354,7 +357,7 @@ function forensicTimeline(c) {
   (c.custody || []).forEach(x => add(x.ts, `Chain of custody: ${x.action}`, `${x.actor}${x.detail ? " · " + x.detail : ""}`, "custody log"));
   const withT = ev.filter(e => e.t).sort((a, b) => a.t - b.t);
   const noT = ev.filter(e => !e.t);
-  const item = e => `<div class="tl-item ${e.sev}"><div class="tl-t">${e.t ? esc(e.t.toISOString().replace("T", " ").slice(0, 19)) + " UTC" : "time not recorded"}</div>
+  const item = (e, i) => `<div class="tl-item ${e.sev}" style="--i:${i}"><div class="tl-t">${e.t ? esc(e.t.toISOString().replace("T", " ").slice(0, 19)) + " UTC" : "time not recorded"}</div>
     <div class="tl-h">${esc(e.title)}</div>${e.detail ? `<div class="tl-d">${esc(e.detail)}</div>` : ""}
     <div class="tl-src">source: ${esc(e.src || "—")}</div></div>`;
   const list = withT.length ? withT.map(item).join("") : "";
@@ -452,7 +455,13 @@ function forceGraph(container, data, onClick) {
 
 /* ------------------------------------------------------------ views */
 routes.dashboard = async () => {
-  view.innerHTML = `<div class="loading"><div class="spin"></div> Loading command center…</div>`;
+  // skeleton first (shimmer placeholders, not a spinner) so the entrance reads as a real console booting
+  const sk = window.MTmotion ? window.MTmotion.skeleton : n => '<div class="skel"></div>'.repeat(n || 3);
+  view.innerHTML = `<div class="page-head"><div><div class="eyebrow">Threat intelligence overview</div><h1>Command Center</h1>
+      <div class="sub" style="margin:0">loading live telemetry…</div></div></div>
+    <div class="hero"><div class="card">${sk(4)}<div class="skel tall"></div></div><div class="card">${sk(6)}</div></div>
+    <div class="card pad0" style="margin:16px 0"><div class="skel tall" style="height:clamp(320px,48vh,470px);margin:0"></div></div>
+    <div class="grid g32"><div class="card">${sk(5)}</div><div class="card">${sk(4)}</div></div>`;
   const [st, cases, camps, health, bar, hot] = await Promise.all([
     api("/api/stats" + mbQ()), api("/api/cases?limit=12" + mbQ("&")), api("/api/campaigns" + mbQ()),
     api("/api/health"), mailboxBar(() => routes.dashboard()),
@@ -480,7 +489,7 @@ routes.dashboard = async () => {
     <div class="hero" data-reveal>
       <div class="card accent" style="display:flex;flex-direction:column;justify-content:center;gap:12px">
         <div class="row-between"><h3 style="margin:0">Threat posture</h3><span class="mini">${st.total} analysed</span></div>
-        <div class="hero-stats">
+        <div class="hero-stats mt-seq">
           <div><div class="v" style="color:var(--crit)" data-count="${mal}">0</div><div class="l">Malicious / likely</div><div class="d">score ≥ 60</div></div>
           <div><div class="v" style="color:var(--amber)" data-count="${st.open_high}">0</div><div class="l">Open high-risk</div><div class="d">awaiting action</div></div>
           <div><div class="v" style="color:var(--cy)" data-count="${st.campaigns}">0</div><div class="l">Campaigns</div><div class="d">shared infrastructure</div></div>
@@ -494,7 +503,7 @@ routes.dashboard = async () => {
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:10px">
         <div class="hd" style="margin:0"><h2 style="margin:0">Priority investigations</h2><a href="#/cases">all cases →</a></div>
-        <div class="threat-list">
+        <div class="threat-list mt-seq">
           ${cases.filter(c => (c.score || 0) >= 15).slice(0, 8).map(c => `<div class="threat-row" data-case="${esc(c.id)}">
             <div class="sev" style="background:${scoreColor(c.score)}"></div>
             <div class="t"><b>${esc(c.subject || "(no subject)")}</b><span>${esc(c.sender || "")}${c.origin_country ? " · " + esc(c.origin_city ? c.origin_city + ", " + c.origin_country : c.origin_country) : ""}</span></div>
@@ -504,7 +513,7 @@ routes.dashboard = async () => {
       </div>
     </div>
 
-    <div class="card pad0" style="margin-bottom:16px" data-reveal>
+    <div class="card pad0" style="margin-bottom:16px" data-reveal data-par="16">
       ${globeShell("globe-main", "clamp(320px, 48vh, 470px)")}
       <div style="padding:10px 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--stroke)">
         <span class="mini">${t.located || 0} of ${t.cases || 0} cases plotted from real GeoIP coordinates${t.no_coordinates ? ` · <b>${t.no_coordinates}</b> country-level only (no coordinates returned — not plotted as precise pins)` : ""}${t.unknown ? ` · ${t.unknown} unresolved` : ""}</span>
@@ -576,7 +585,7 @@ routes.analyze = async () => {
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"><button class="btn p" id="go">⚡ Analyze pasted source</button><label class="mini" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="persist" checked> save as case (evidence preserved + custody log)</label></div>
       </div>
       <div class="card"><div class="hd"><h2 style="margin:0">Demo corpus (${samples.length})</h2><span class="mini">realistic scenarios for an Indian institution</span></div>
-        <div class="samples">${samples.map(s => `<div class="sample" data-n="${esc(s.name)}"><b>${esc(s.subject)}</b><small>${esc(s.from)}</small><small class="mono">${esc(s.name)} · ${s.size} B</small></div>`).join("")}</div></div>
+        <div class="samples mt-seq">${samples.map(s => `<div class="sample" data-n="${esc(s.name)}"><b>${esc(s.subject)}</b><small>${esc(s.from)}</small><small class="mono">${esc(s.name)} · ${s.size} B</small></div>`).join("")}</div></div>
     </div>
     <div id="progress" style="margin-top:18px"></div>`;
 
@@ -586,6 +595,10 @@ routes.analyze = async () => {
     const holder = $("#progress");
     holder.innerHTML = `<div class="card"><div class="hd"><h2 style="margin:0">Investigation pipeline</h2><span class="mini" id="pipe-target">${esc(label)}</span></div><div class="pipe" id="pipe"></div></div>`;
     const pipe = window.MTPipeline.create($("#pipe"), {});
+    // immersive AI-processing texture — runs only while the backend is actually working
+    const scanCard = holder.querySelector(".card");
+    const scan = (window.MTmotion && scanCard) ? window.MTmotion.aiScan(scanCard) : null;
+    if (scan) vtrack(scan);
     try {
       const res = await fetch(fd.url || "/api/analyze/stream", { method: "POST", body: fd.body, headers: { "X-Analyst": analyst() } });
       // Older builds (frozen EXE) have no streaming endpoint: fall back to the classic request and
@@ -595,7 +608,7 @@ routes.analyze = async () => {
         window.MTPipeline.STAGES.forEach(st => pipe.stage(st.id, "run", {}));
         const r = await api(fd.fallbackUrl, { method: "POST", body: fd.body });
         window.MTPipeline.STAGES.forEach(st => pipe.stage(st.id, "done", {}));
-        pipe.done();
+        pipe.done(); if (scan) scan.done();
         if (r.case_id) location.hash = "#/case/" + r.case_id; else { window._adhoc = r; location.hash = "#/adhoc"; }
         return;
       }
@@ -627,11 +640,11 @@ routes.analyze = async () => {
       if (dec) onLine(buf); else if (bytes.length) onLine(utf8(bytes));
       if (err) throw new Error(err);
       if (!result) throw new Error("stream ended without a result");
-      pipe.done();
+      pipe.done(); if (scan) scan.done();
       if (result.case_id) location.hash = "#/case/" + result.case_id;
       else { window._adhoc = result; location.hash = "#/adhoc"; }
     } catch (e) {
-      pipe.fail(e.message);
+      pipe.fail(e.message); if (scan) scan.fail();
       toast("Analysis failed", e.message, true);
     }
   };
@@ -688,7 +701,7 @@ function renderCase(c, adhoc = false) {
         <div class="mini">From <b>${esc(h.from.name || "")}</b> &lt;${esc(h.from.address)}&gt; → ${esc(h.to)}${h.reply_to.address ? ` · Reply-To <span style="color:#fdba74">${esc(h.reply_to.address)}</span>` : ""}</div></div>
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${adhoc ? "" : `<a class="btn" href="/api/cases/${c.id}/report.pdf" target="_blank" data-export="pdf" data-cid="${c.id}" data-name="MailTrace_${c.id}.pdf">📄 Forensic PDF</a><a class="btn sm" href="/api/cases/${c.id}/iocs.csv" data-export="csv" data-cid="${c.id}" data-name="iocs_${c.id}.csv">IOC CSV</a><a class="btn sm" href="/api/cases/${c.id}/report.json" target="_blank" data-export="json" data-cid="${c.id}" data-name="MailTrace_${c.id}.json">JSON</a><a class="btn sm" href="/api/cases/${c.id}/evidence.eml" data-export="eml" data-cid="${c.id}" data-name="evidence_${c.id}.eml">Evidence .eml</a>`}</div>
     </div>
-    <div class="grid" style="grid-template-columns:150px 1fr 1fr 1fr;margin-bottom:14px">
+    <div class="grid mt-seq" style="grid-template-columns:150px 1fr 1fr 1fr;margin-bottom:14px">
       <div class="card" style="display:flex;align-items:center;justify-content:center">${scoreRing(s.score, s.label)}</div>
       <div class="card"><h3>Classification</h3><div style="margin-bottom:6px">${verdictBadge(s.verdict, s.label)} <span class="badge b-mut">${esc(r.threat.primary.replace(/_/g, " "))}</span> ${r.threat.secondary.map(t => `<span class="badge b-mut">${esc(t.replace(/_/g, " "))}</span>`).join(" ")}</div>${r.threat.bec.length ? `<div class="mini">BEC patterns: ${r.threat.bec.map(esc).join(" · ")}</div>` : ""}<div style="margin-top:8px">${categoryBars(s.category_pct)}</div>${s.trust_credits?.length ? `<div class="mini" style="color:#86efac">Trust credits: ${s.trust_credits.map(esc).join("; ")}</div>` : ""}</div>
       <div class="card"><h3>Authentication</h3><dl class="kv"><dt>SPF</dt><dd>${authBadge(au.spf)} <span class="mini">${au.spf_aligned ? "aligned" : "not aligned"} · ${esc(au.spf_domain || "")}</span></dd><dt>DKIM</dt><dd>${authBadge(au.dkim)} <span class="mini">${au.dkim_domains.length ? "d=" + au.dkim_domains.map(esc).join(", ") : "no signature"}${au.dkim_aligned ? " · aligned" : ""}${au.dkim_crypto_verified === true ? " · crypto ✓" : au.dkim_crypto_verified === false ? " · crypto ✗" : ""}</span></dd><dt>DMARC</dt><dd>${authBadge(au.dmarc)} <span class="mini">p=${esc(au.dmarc_policy || "none")}</span></dd><dt>Return-Path</dt><dd class="mini">${esc(h.return_path.address || "—")}</dd><dt>Message-ID</dt><dd class="mini mono">${esc(h.message_id || "(missing)")}</dd></dl></div>
@@ -1070,8 +1083,13 @@ routes.settings = async () => {
 
 /* ------------------------------------------------------------ boot */
 (async () => {
+  const bootSay = t => { if (window.MTmotion) window.MTmotion.boot.label(t); };
+  bootSay("connecting to analysis backend…");
   try { const h = await api("/api/health"); const m = h.model || {}; $("#model-info").textContent = `NLP: ${m.model || "?"} · acc ${m.accuracy ? (m.accuracy * 100).toFixed(1) + "%" : "?"} · AUC ${m.roc_auc || "?"}${h.offline ? " · OFFLINE" : ""}${h.desktop ? " · desktop" : ""}`;
-    try { const s = await api("/api/settings"); if (s.settings?.analyst) $("#analyst").value = s.settings.analyst; } catch {} } catch {}
+    try { const s = await api("/api/settings"); if (s.settings?.analyst) $("#analyst").value = s.settings.analyst; } catch {}
+    bootSay("detection engine ready");
+  } catch { bootSay("backend unreachable — running offline"); }
+  if (window.MTmotion) window.MTmotion.boot.end();
   mbSet(mbGet()); connectEvents(); navigate();
   // any [data-reveal] block added later (async routes) fades in when it scrolls into view
   if (window.MTfx) {
