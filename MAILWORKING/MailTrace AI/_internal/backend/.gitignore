@@ -1,0 +1,11 @@
+# Runtime artefacts created when the app runs — never commit case data or evidence.
+__pycache__/
+*.pyc
+data/mailtrace.db
+data/mailtrace.db-shm
+data/mailtrace.db-wal
+data/intel_cache.json
+data/evidence/
+data/uploads/
+data/logs/
+data/.mailtrace.key

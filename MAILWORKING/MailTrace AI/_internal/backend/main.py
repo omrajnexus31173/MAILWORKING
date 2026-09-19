@@ -14,13 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer.engine import analyze_email
 from analyzer import intel, content as content_mod
 from analyzer.common import load_org_profile, save_org_profile, load_settings, save_settings, DATA_DIR
-import store, report, ingest
+import store, report, ingest, notify
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 FRONTEND = os.path.join(os.path.dirname(ROOT), "frontend")
 SAMPLES = os.path.join(ROOT, "samples")
 
-app = FastAPI(title="MailTrace AI", version="1.2.0", description="AI-Powered Email Threat Detection, GeoLocation and Forensic Intelligence Platform")
+app = FastAPI(title="MailTrace AI", version="1.3.0", description="AI-Powered Email Threat Detection, GeoLocation and Forensic Intelligence Platform")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ---- live alert stream (SSE) ----
@@ -32,6 +32,15 @@ def _publish(evt: Dict[str, Any]):
     for q in list(_subscribers):
         try: _loop.call_soon_threadsafe(q.put_nowait, evt)
         except Exception: pass
+    # persisted notification history (real events only — counts are counted from stored cases)
+    try:
+        n = notify.consume(evt)
+        if n and _loop is not None:
+            for q in list(_subscribers):
+                try: _loop.call_soon_threadsafe(q.put_nowait, {"type": "notify", "notification": n, "ts": time.time()})
+                except Exception: pass
+    except Exception as e:
+        logging.getLogger("uvicorn.error").warning("notify failed: %s", e)
 
 @app.on_event("startup")
 async def _startup():
@@ -43,7 +52,12 @@ async def _startup():
     logging.getLogger("uvicorn.error").info("MailTrace AI: %d cases in store, %s", store.count_cases(), "OFFLINE mode" if intel.OFFLINE else "live enrichment enabled")
     threading.Thread(target=intel.refresh_tor, daemon=True).start()
     ingest.set_publisher(_publish)
+    notify.init()
+    try: notify.clear(300)          # keep the newest 300 events so the history file stays small
+    except Exception: pass
     ingest.start_monitor()                        # polls / IDLEs the configured mailboxes in the background
+    # catch-up: the monitor thread scans every SELECTED account a few seconds after boot, so mail
+    # that arrived while the app was closed is analysed and on the dashboard without user action.
 
 def _actor(x_analyst: Optional[str]) -> str:
     return (x_analyst or "analyst").strip()[:60]
@@ -93,6 +107,78 @@ async def analyze_batch(files: List[UploadFile] = File(...), x_analyst: Optional
         except Exception as e:
             out.append({"file": f.filename, "error": str(e)})
     return out
+
+@app.get("/api/geo/hotspots")
+def geo_hotspots(mailbox: str = "", limit: int = 400):
+    """Real geospatial aggregation of analysed cases for the 3D globe (no synthetic points)."""
+    return store.geo_hotspots(mailbox=mailbox, limit=max(1, min(limit, 1000)))
+
+
+@app.post("/api/analyze/stream")
+async def analyze_stream(file: UploadFile = File(None), raw_text: str = Form(None), persist: bool = Form(True),
+                         x_analyst: Optional[str] = Header(None)):
+    """
+    Same analysis as /api/analyze, but streams NDJSON progress events emitted by the real pipeline
+    (one line per stage transition, then the final result). The UI animates the investigation
+    pipeline from these events — a stage can only light up when the work behind it has finished.
+    """
+    if file is not None:
+        raw = await file.read(); name = file.filename or "upload.eml"
+    elif raw_text:
+        raw = raw_text.encode("utf-8", "surrogateescape"); name = "pasted.eml"
+    else:
+        raise HTTPException(400, "Provide an .eml file or raw_text")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(413, "Message too large (25 MB limit)")
+    return _ndjson_stream(raw, name, _actor(x_analyst), persist, "upload")
+
+
+def _ndjson_stream(raw: bytes, name: str, actor: str, persist: bool, source: str):
+    loop = asyncio.get_event_loop()
+    q: asyncio.Queue = asyncio.Queue()
+
+    def emit(sid, status, payload):
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "stage", "id": sid, "status": status, **(payload or {})})
+
+    def work():
+        try:
+            org = load_org_profile()
+            result = analyze_email(raw, org, on_stage=emit)
+            if persist:
+                meta = store.save_case(result, raw, name, actor=actor, source=source)
+                result["case_id"] = meta["case_id"]; result["campaign_id"] = meta["campaign_id"]
+                if result["score"]["score"] >= 60:
+                    _publish({"type": "alert", "case_id": result["id"], "score": result["score"]["score"], "label": result["score"]["label"],
+                              "subject": result["headers"]["subject"], "sender": result["headers"]["from"]["address"],
+                              "threat": result["threat"]["primary"], "origin": (result["attribution"].get("origin_geo") or {}).get("country"), "ts": time.time()})
+                else:
+                    _publish({"type": "case", "case_id": result["id"], "score": result["score"]["score"], "label": result["score"]["label"],
+                              "subject": result["headers"]["subject"], "ts": time.time()})
+            intel.flush_cache()
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "result", "result": json.loads(json.dumps(result, default=str))})
+        except Exception as e:
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(e)})
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, None)
+
+    threading.Thread(target=work, daemon=True).start()
+
+    async def gen():
+        while True:
+            evt = await q.get()
+            if evt is None:
+                break
+            yield json.dumps(evt, default=str) + "\n"
+    return StreamingResponse(gen(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/samples/{name}/analyze/stream")
+async def analyze_sample_stream(name: str, persist: bool = Form(True), x_analyst: Optional[str] = Header(None)):
+    """Bundled demo corpus analysed through the same streaming pipeline (progress events are real)."""
+    p = os.path.join(SAMPLES, os.path.basename(name))
+    if not os.path.exists(p): raise HTTPException(404, "sample not found")
+    return _ndjson_stream(open(p, "rb").read(), os.path.basename(p), _actor(x_analyst), persist, "sample")
+
 
 @app.get("/api/samples")
 def samples():
@@ -396,6 +482,59 @@ def jobs_cancel(jid: str):
     return {"ok": True}
 
 # ---- frontend ----
+# ---------------------------------------------------------- notifications (real events only) ----
+@app.get("/api/notifications")
+def notifications_list(limit: int = 60, unread: bool = False):
+    return {"items": notify.list_notifications(limit=limit, unread_only=unread), "unread": notify.unread_count()}
+
+
+class ReadIn(BaseModel):
+    id: Optional[str] = None
+    all: bool = False
+
+
+@app.post("/api/notifications/read")
+def notifications_read(body: ReadIn):
+    return {"updated": notify.mark_read(body.id, body.all), "unread": notify.unread_count()}
+
+
+# --------------------------------------------------- background monitoring / account selection ----
+@app.get("/api/monitor")
+def monitor_status():
+    """Live state of the background monitor + every configured account (selected / not selected)."""
+    return ingest.monitor_status()
+
+
+@app.post("/api/monitor/enable")
+def monitor_enable(enabled: bool = True):
+    return {"enabled": ingest.set_monitor_enabled(enabled)}
+
+
+class ScanIn(BaseModel):
+    mode: Optional[str] = "incremental"     # incremental (since last checkpoint) | backfill (since `since` date)
+
+
+@app.post("/api/monitor/scan")
+def monitor_scan(body: ScanIn = None, x_analyst: Optional[str] = Header(None)):
+    """Scan every SELECTED account now (dedupe via the stored UID checkpoint)."""
+    body = body or ScanIn()
+    return {"jobs": ingest.scan_now(actor=_actor(x_analyst), mode=body.mode or "incremental")}
+
+
+@app.post("/api/sources/{sid}/scan")
+def source_scan(sid: str, body: ScanIn = None, x_analyst: Optional[str] = Header(None)):
+    if not ingest.get_source(sid):
+        raise HTTPException(404, "source not found")
+    body = body or ScanIn()
+    return {"jobs": ingest.scan_now(sid=sid, actor=_actor(x_analyst), mode=body.mode or "incremental")}
+
+
+@app.get("/api/accounts")
+def accounts_list():
+    """Accounts (mail sources) enriched with their monitoring state for the Mail Accounts page."""
+    return {"accounts": ingest.monitor_status()["sources"], "monitor": ingest.monitor_status()}
+
+
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
 @app.get("/", response_class=HTMLResponse)

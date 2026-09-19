@@ -290,6 +290,69 @@ def classify_ip(g: Dict[str, Any]) -> Dict[str, Any]:
         cat, anon = "ISP / residential", 0.1
     return {"tags": tags, "category": cat, "anonymity_score": anon}
 
+def geo_precision(rec: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Honest precision envelope for a GeoIP record.
+
+    The platform never invents coordinates: a record is only 'city' precision when the provider
+    actually returned a city AND coordinates, 'country' precision when only the country is known
+    (no coordinates → the UI must say so and must not place a pin), and 'unknown' when nothing
+    resolved. Anonymising infrastructure (Tor/VPN/proxy) drives the confidence down further
+    because the *geographic* position of the IP says nothing about the operator's position.
+    """
+    def _num(v):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f == f else None                      # NaN guard
+
+    lat, lon = _num(rec.get("lat")), _num(rec.get("lon"))
+    has_coords = lat is not None and lon is not None and abs(lat) <= 90.0 and abs(lon) <= 180.0 and (lat or lon)
+    city = (rec.get("city") or "").strip()
+    region = (rec.get("regionName") or "").strip()
+    country = (rec.get("country") or "").strip()
+    status = rec.get("status") or "unknown"
+    anon = rec.get("anonymity_score") or 0.0
+
+    if status == "private":
+        return {"level": "private", "label": "Private / internal network", "radius_km": None,
+                "has_coordinates": False, "approximate": True, "confidence": 1.0,
+                "caveat": "RFC1918 address — not routable on the public internet"}
+    if status not in ("success", "seed") or (not country and not has_coords):
+        return {"level": "unknown", "label": "Location unavailable", "radius_km": None,
+                "has_coordinates": False, "approximate": True, "confidence": 0.0,
+                "caveat": "No GeoIP answer for this address (lookup failed / offline / private)"}
+    if has_coords and city:
+        level, radius, conf = "city", 25, 0.88
+    elif has_coords and region:
+        level, radius, conf = "region", 120, 0.72
+    elif has_coords:
+        level, radius, conf = "country", 600, 0.55
+    else:                                                  # country known, coordinates genuinely missing
+        level, radius, conf = "country", None, 0.40
+
+    caveat = ""
+    if not has_coords:
+        caveat = "Coordinates unavailable — country-level location only, no pin plotted"
+    if anon >= 0.7:
+        conf *= 0.30
+        caveat = "Infrastructure is anonymising (Tor/VPN/proxy): the IP location is not the actor's location"
+    elif anon >= 0.4:
+        conf *= 0.60
+        caveat = caveat or "Rented/anonymised infrastructure — location is indicative only"
+    if status == "seed":
+        conf *= 0.85
+        caveat = caveat or "Bundled offline seed record (no live lookup)"
+
+    loc = ", ".join([x for x in (city, region, country) if x]) or "Unknown"
+    label = {"city": "City-level", "region": "Region-level", "country": "Country-level",
+             "private": "Private network", "unknown": "Location unavailable"}[level]
+    return {"level": level, "label": label + (" (approximate)" if level in ("region", "country") else ""),
+            "radius_km": radius, "has_coordinates": bool(has_coords), "approximate": level in ("region", "country", "unknown"),
+            "confidence": round(max(0.0, min(0.95, conf)), 2), "location": loc, "caveat": caveat}
+
+
 GEO_URL = "http://ip-api.com/batch?fields=status,message,query,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,reverse,mobile,proxy,hosting"
 
 class _GeoBatcher:
@@ -383,6 +446,10 @@ def geolocate(ips: List[str], live: bool = True) -> Dict[str, Dict[str, Any]]:
             rec["isp"] = (rec.get("as", "").split(" ", 1)[-1] if rec.get("as") and " " in rec.get("as") else "") or rec.get("org") or rec.get("asname") or rec["isp"]
         rec.update(classify_ip(rec))
         rec["is_tor"] = ip in _TOR
+        # precision envelope — downstream code (scoring, attribution, UI) must never claim more than this
+        rec["geo_precision"] = geo_precision(rec)
+        rec["location_label"] = rec["geo_precision"].get("location") or ", ".join(
+            x for x in (rec.get("city"), rec.get("regionName"), rec.get("country")) if x) or "Unknown"
     return out
 
 # ------------------------------------------------------------------ RDAP ---

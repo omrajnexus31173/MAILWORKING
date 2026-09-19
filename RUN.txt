@@ -1,0 +1,97 @@
+MailTrace AI - FINAL PRODUCTION BUILD
+=====================================
+
+*** IF THE EXE SAYS "Failed to start embedded python interpreter!" - READ THIS ***
+That message means the PyInstaller runtime beside the .exe is incomplete. The file it needs is
+    MAILWORKING\MailTrace AI\_internal\base_library.zip      (1.2 MB, 155 Python core modules)
+If that file is missing, re-extract the zip WITH ITS FOLDER STRUCTURE (do not move the .exe out
+of its folder) - the .exe loads its whole runtime from _internal next to it.
+Verify in one click: double-click  Check-Runtime.bat  (in this folder and next to the exe).
+It checks base_library.zip, python312.dll, the compiled extension modules and the app payload,
+and prints PASS/FAIL for each. Nothing to install - the app is fully self-contained.
+The build now refuses to produce a release in which any file of the runtime is missing.
+
+*** IF WINDOWS REFUSES TO OPEN THE APP - READ THIS FIRST ***
+Windows marks every file extracted from a downloaded .zip as "came from the internet"
+("Mark of the Web"). It then blocks the .NET / WebView2 components the MailTrace AI window
+needs and the app fails to open with something like:
+    "Failed to resolve Python.Runtime.Loader.Initialize"
+    or the window simply never appears.
+FIX (one click): double-click  Unblock-Windows.bat  in this folder, then start the app.
+   Start-MailTrace-AI.bat finds the .exe relative to itself, so it works from this folder
+   AND from inside MAILWORKING\MailTrace AI\.
+   (or double-click  Start-MailTrace-AI.bat  which unblocks and starts in one go)
+   The same three helpers are also copied next to the .exe, inside MAILWORKING\MailTrace AI\.
+Manual alternatives:
+   1. Right-click the downloaded .zip -> Properties -> tick "Unblock" -> OK -> extract again.
+   2. PowerShell:  Get-ChildItem -LiteralPath <this folder> -Recurse | Unblock-File
+   3. Extract to a folder you own (e.g. Documents), not Program Files.
+   4. If the window still cannot start: use  Start-Engine-and-Open.bat  (runs the engine and
+      opens the console in your browser - full functionality except the native window).
+
+CONTENTS (complete runnable project)
+  MAILWORKING/MailTrace AI/            packaged app: MailTrace AI.exe + full _internal runtime
+                                       (base_library.zip, python312.dll, 20 extension modules,
+                                       pythonnet/WebView2, reportlab, PIL, sqlite3, OpenSSL)
+      _internal/frontend/              UI: index.html, app.js, app.css, motion.css,
+                                       lib/{fx,motion,geo,globe,graph,pipeline,snake,console}.js,
+                                       data/{world,centroids}.js, vendor/three.min.js (offline)
+      _internal/backend/               FastAPI engine: main.py, ingest.py, store.py, report.py,
+                                       notify.py, analyzer/, models/, config/, samples/
+      _internal/…                      Python runtime, reportlab and packaged dependencies
+  MAILWORKING/docs/                    solution document + ingestion guide
+  MAILWORKING/README-FIRST.txt         original project readme
+  tools/                               automated test harnesses (see tools/README.md)
+
+RUN — Windows desktop
+  1. Unzip and keep the folder structure.
+  2. Start  MAILWORKING\MailTrace AI\MailTrace AI.exe
+  The packaged app serves the UI from _internal\frontend and the engine from _internal\backend,
+  so every change in this build is live — the .exe binary itself does not need rebuilding.
+  (It is a compiled Windows binary; it was NOT recompiled here. It reads the edited sources at start.)
+
+RUN — server / browser (any OS)
+  1. pip install fastapi "uvicorn[standard]" networkx dnspython requests python-multipart tldextract reportlab
+  2. cd "MAILWORKING/MailTrace AI/_internal/backend"
+  3. python -m uvicorn main:app --host 0.0.0.0 --port 8000      (MAILTRACE_OFFLINE=1 forces offline mode)
+  4. Open http://localhost:8000
+
+GMAIL / IMAP AUTOMATIC MONITORING — how it really works
+  1. Mail Accounts → connect an account (Gmail preset: imap.gmail.com:993 SSL, use a Google
+     *App Password*). Credentials are stored locally, obfuscated, and never returned by the API.
+  2. Tick "Monitor this account". Selection, mode (IMAP IDLE push / poll interval / manual),
+     interval and the per-folder UID checkpoint are persisted in the SQLite store, so the
+     selection survives a restart — only ticked accounts are scanned.
+  3. On every start the monitor thread runs a catch-up scan of the SELECTED accounts: messages
+     newer than the stored checkpoint are fetched read-only, analysed by the real engine, stored
+     as cases, clustered into campaigns, and announced as notifications. Nothing is deleted or
+     marked read on the server, and the checkpoint prevents duplicate processing.
+  4. While running: IMAP IDLE gives push delivery, otherwise each account is polled at its
+     interval. "Scan now" runs an incremental scan on demand.
+  5. Notifications: severity-coloured toasts + a slide-over history panel (bell in the sidebar),
+     each entry derived from real events; counts are counted from stored cases. Desktop
+     notifications are used when the window shell exposes them.
+  6. "⤓ Run in background" hides/minimises the window — monitoring continues in the service
+     process. When the application is closed the service stops, so no mail is checked while
+     MailTrace AI is not running.
+
+TESTS (all green against a live server)
+  python3 tools/test_api.py                 51 assertions: engine, geolocation honesty, streaming
+                                            pipeline, reports, notifications, monitoring + selection
+  npm i jsdom@24 && node tools/test_motion.js          89 assertions (motion, snake, accounts, UI)
+  REDUCE=1 node tools/test_motion.js                   75 assertions (prefers-reduced-motion)
+
+HONEST LIMITATIONS
+  • The .exe was not recompiled — unnecessary, it loads _internal at runtime (see above).
+  • Runtime data is not shipped (mailtrace.db, evidence/, intel_cache.json, uploads/, the local
+    obfuscation key). The store is recreated on first run; use "Run demo corpus" to refill.
+  • Live enrichment (DNS, GeoIP, RDAP, Tor exit list) and IMAP need internet on first use.
+    Without it the engine runs from bundled seeds and labels results offline/triage.
+  • Geolocation is never invented: precision (city / region / country / unavailable), confidence
+    and the evidence source are shown next to every coordinate; country-only records are plotted
+    at the country centroid and explicitly labelled approximate.
+  • "Background monitoring" means the application's own service keeps scanning while the window is
+    hidden. It is not an OS-level service: closing MailTrace AI stops monitoring until next start,
+    at which point the catch-up scan covers everything that arrived meanwhile.
+  • Visuals were verified structurally (jsdom + CSS audit); this sandbox has no GPU/browser, so
+    check animation smoothness, layout and the 3D objects by eye in your browser.

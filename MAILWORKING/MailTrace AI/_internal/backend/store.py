@@ -307,6 +307,87 @@ def count_cases() -> int:
     except Exception:
         return 0
 
+
+# ------------------------------------------------------------------ geospatial aggregation ----
+# Feeds the 3D globe. Only coordinates that the GeoIP provider actually returned are plotted:
+# cases whose origin is country-level only (or unknown) are counted separately and reported as
+# "no coordinates" so the visualisation can say so instead of guessing a position.
+_hs_cache: Dict[str, Any] = {"key": None, "ts": 0.0, "data": None}
+
+def geo_hotspots(mailbox: str = "", limit: int = 400, max_arcs: int = 40) -> Dict[str, Any]:
+    key = f"{mailbox}|{limit}|{max_arcs}"
+    if _hs_cache["data"] is not None and _hs_cache["key"] == key and time.time() - _hs_cache["ts"] < 45:
+        return _hs_cache["data"]
+    w, a = (" AND mailbox=?", (mailbox,)) if mailbox else ("", ())
+    with _conn() as c:
+        rows = [dict(r) for r in c.execute(
+            "SELECT id, subject, sender, score, verdict, threat, scenario, origin_ip, analyzed_at, result_json "
+            f"FROM cases WHERE 1=1{w} ORDER BY created_at DESC LIMIT ?", (*a, limit)).fetchall()]
+    pts: Dict[str, Any] = {}
+    arcs: List[Dict[str, Any]] = []
+    countries: Dict[str, Any] = {}
+    totals = {"cases": 0, "located": 0, "no_coordinates": 0, "unknown": 0, "anonymised": 0, "tor": 0}
+    for r in rows:
+        totals["cases"] += 1
+        try:
+            res = json.loads(r["result_json"] or "{}")
+        except Exception:
+            res = {}
+        attr = res.get("attribution") or {}
+        g = attr.get("origin_geo") or {}
+        prec = g.get("geo_precision") or {}
+        ip = attr.get("origin_ip") or r.get("origin_ip")
+        cc = g.get("countryCode") or ""
+        cname = g.get("country") or ""
+        if cname and cname != "Unknown":
+            e = countries.setdefault(cc or cname, {"country": cname, "countryCode": cc, "count": 0, "max_score": 0})
+            e["count"] += 1
+            e["max_score"] = max(e["max_score"], r["score"] or 0)
+        case_stub = {"id": r["id"], "subject": r["subject"], "score": r["score"], "verdict": r["verdict"],
+                     "threat": r["threat"], "scenario": r["scenario"], "analyzed_at": r["analyzed_at"], "sender": r["sender"]}
+        lat, lon = g.get("lat"), g.get("lon")
+        if prec.get("has_coordinates") and lat is not None and lon is not None:
+            totals["located"] += 1
+            k = f"{ip or (lat, lon)}"
+            e = pts.setdefault(k, {"ip": ip, "lat": round(float(lat), 3), "lon": round(float(lon), 3),
+                                   "country": cname, "countryCode": cc, "city": g.get("city") or "",
+                                   "region": g.get("regionName") or "", "isp": g.get("isp") or "", "asn": g.get("as") or "",
+                                   "category": g.get("category") or "", "tags": g.get("tags") or [],
+                                   "precision": prec.get("level"), "precision_label": prec.get("label"),
+                                   "approximate": bool(prec.get("approximate")), "confidence": prec.get("confidence"),
+                                   "count": 0, "max_score": 0, "sum_score": 0.0, "cases": [], "last_at": ""})
+            e["count"] += 1
+            e["max_score"] = max(e["max_score"], r["score"] or 0)
+            e["sum_score"] += (r["score"] or 0)
+            if len(e["cases"]) < 12: e["cases"].append(case_stub)
+            if (r["analyzed_at"] or "") > e["last_at"]: e["last_at"] = r["analyzed_at"] or ""
+            if "TOR_EXIT" in (g.get("tags") or []): totals["tor"] += 1
+            if (g.get("category") or "").startswith("anonymised"): totals["anonymised"] += 1
+        elif cname and cname != "Unknown":
+            totals["no_coordinates"] += 1
+        else:
+            totals["unknown"] += 1
+        # relay chain: origin → … → recipient, drawn only between hops that really have coordinates
+        if len(arcs) < max_arcs:
+            path = [p for p in (res.get("trace_path") or []) if p.get("lat") is not None and p.get("lon") is not None]
+            for i in range(len(path) - 1):
+                if len(arcs) >= max_arcs: break
+                a1, b1 = path[i], path[i + 1]
+                arcs.append({"case_id": r["id"], "score": r["score"], "threat": r["threat"], "subject": r["subject"],
+                             "hop": a1.get("position"), "from_ip": a1.get("ip"), "to_ip": b1.get("ip"),
+                             "from": {"lat": a1["lat"], "lon": a1["lon"], "label": a1.get("city") or a1.get("country") or a1.get("ip")},
+                             "to": {"lat": b1["lat"], "lon": b1["lon"], "label": b1.get("city") or b1.get("country") or b1.get("ip")},
+                             "delay_s": b1.get("delay_s")})
+    for e in pts.values():
+        e["avg_score"] = round(e["sum_score"] / max(1, e["count"]), 1)
+        e.pop("sum_score", None)
+    data = {"points": sorted(pts.values(), key=lambda p: (-p["max_score"], -p["count"])),
+            "arcs": arcs,
+            "countries": sorted(countries.values(), key=lambda c: -c["count"])[:12],
+            "totals": totals, "mailbox": mailbox, "scanned": len(rows), "generated_at": time.time()}
+    _hs_cache.update(key=key, ts=time.time(), data=data)
+    return data
+
 def stats(mailbox: str = "") -> Dict[str, Any]:
     w, a = (" AND mailbox=?", (mailbox,)) if mailbox else ("", ())
     with _conn() as c:
