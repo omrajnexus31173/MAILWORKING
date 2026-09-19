@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import importlib.util
 import struct
 import sys
 import tempfile
@@ -217,6 +218,19 @@ def main() -> int:
             bl_detail = "%d modules, core: %s" % (len(names_in), ", ".join(core) or "MISSING")
         check(bl_ok, "base_library.zip: Python core modules (missing = 'Failed to start embedded python interpreter!')",
               bl_detail)
+
+        # the frozen .pyc files must be compiled for the SAME interpreter as python312.dll,
+        # otherwise the bootloader cannot import them while starting Python
+        pyc_magic = None
+        try:
+            with zipfile.ZipFile(bl) as z:
+                pyc_magic = z.read("codecs.pyc")[:4]
+        except Exception:
+            pass
+        want = importlib.util.MAGIC_NUMBER if sys.version_info[:2] == (3, 12) else b"\xcb\x0d\r\n"
+        check(pyc_magic == want, "core .pyc files are compiled for Python 3.12",
+              ("found %s, expected %s" % (pyc_magic, want)) if pyc_magic and pyc_magic != want else
+              ("(magic compared against the running interpreter)" if sys.version_info[:2] == (3, 12) else ""))
 
         pyd = sorted(f for f in os.listdir(internal) if f.endswith(".pyd")) if os.path.isdir(internal) else []
         need = {"_socket.pyd", "_ssl.pyd", "select.pyd", "_ctypes.pyd", "unicodedata.pyd"}
