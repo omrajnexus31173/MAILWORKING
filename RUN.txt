@@ -9,6 +9,7 @@ needs and the app fails to open with something like:
     or the window simply never appears.
 FIX (one click): double-click  Unblock-Windows.bat  in this folder, then start the app.
    (or double-click  Start-MailTrace-AI.bat  which unblocks and starts in one go)
+   The same three helpers are also copied next to the .exe, inside MAILWORKING\MailTrace AI\.
 Manual alternatives:
    1. Right-click the downloaded .zip -> Properties -> tick "Unblock" -> OK -> extract again.
    2. PowerShell:  Get-ChildItem -LiteralPath <this folder> -Recurse | Unblock-File
