@@ -8,3 +8,4 @@ data/intel_cache.json
 data/evidence/
 data/uploads/
 data/logs/
+data/.mailtrace.key
