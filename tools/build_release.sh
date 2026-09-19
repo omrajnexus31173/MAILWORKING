@@ -16,6 +16,7 @@ git archive HEAD \
   "MAILWORKING/MailTrace AI" "MAILWORKING/docs" "MAILWORKING/demo" \
   tools RUN.txt README.md \
   Unblock-Windows.ps1 Unblock-Windows.bat Start-MailTrace-AI.bat Start-Engine-and-Open.bat \
+  Check-Runtime.ps1 Check-Runtime.bat \
   | tar -x -C "$STAGE"
 
 # the launcher helpers next to the .exe too, so they are found from either folder
