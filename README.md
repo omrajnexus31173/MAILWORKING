@@ -30,4 +30,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000
 # open http://localhost:8000
 ```
 
+**Verify a download:** `python3 tools/verify_release.py <extracted-folder>` (50 checks:
+required files, packaged runtime, offline frontend, no runtime data or secrets).
+
 Rebuild the release archive with `bash tools/build_release.sh`.
