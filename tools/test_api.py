@@ -2,7 +2,7 @@
 """MailTrace AI — backend regression smoke test against a live server.
 Verifies the real analysis path still works after the frontend/motion work:
 ingestion, streaming pipeline, geolocation honesty, campaigns, graph, reports."""
-import json, sys, urllib.request, urllib.parse
+import json, sys, time, urllib.request, urllib.parse
 
 BASE = "http://127.0.0.1:8000"
 P = F = 0
@@ -23,6 +23,15 @@ def get(path):
         ct = r.headers.get("content-type", "")
         body = r.read()
         return (json.loads(body) if "json" in ct else body), r.status
+
+
+def put(path, data=None, ctype="application/json"):
+    body = data if isinstance(data, bytes) else json.dumps(data or {}).encode()
+    req = urllib.request.Request(BASE + path, data=body, method="PUT")
+    req.add_header("Content-Type", ctype)
+    with urllib.request.urlopen(req, timeout=60) as r:
+        raw = r.read()
+        return (json.loads(raw) if raw[:1] in (b"{", b"[") else raw), r.status
 
 
 def post(path, data=None, ctype=None):
@@ -121,6 +130,80 @@ ok("JSON report generated", isinstance(js, dict) and js.get("id") == cid, list(j
 det, _ = get("/api/cases/%s" % cid)
 ok("case detail loaded", isinstance(det, dict) and det.get("id") == cid, list(det)[:5] if isinstance(det, dict) else det)
 ok("chain of custody recorded", isinstance(det.get("custody", []), list), det.get("custody"))
+
+print("\n[5] notifications (real events only)")
+nt, _ = get("/api/notifications?limit=100")
+items = nt["items"]
+ok("notification history stored", len(items) > 0, len(items))
+ok("unread counter matches list", nt["unread"] == len([i for i in items if not i["read"]]), nt["unread"])
+threats = [n for n in items if n["kind"] == "threat"]
+ok("threat notifications carry a case id", all(n["case_id"] for n in threats))
+bad = []
+for n in threats:
+    d0, _ = get("/api/cases/%s" % n["case_id"])
+    if d0.get("verdict") not in ("malicious", "likely_malicious"):
+        bad.append((n["case_id"], d0.get("verdict")))
+ok("every threat notification maps to a real high-risk case", not bad, bad[:3])
+ok("threat notifications are at least the current high-risk cases",
+   len(threats) >= st["by_verdict"].get("malicious", 0) + st["by_verdict"].get("likely_malicious", 0),
+   len(threats))
+if threats:
+    det, _ = get("/api/cases/%s" % threats[0]["case_id"])
+    ok("notification links to a real case", isinstance(det, dict) and det.get("id") == threats[0]["case_id"])
+    ok("severity is one of the known levels",
+       threats[0]["severity"] in ("critical", "high", "medium", "low", "ok"), threats[0]["severity"])
+rd, _ = post("/api/notifications/read", json.dumps({"all": True}).encode(), "application/json")
+ok("mark all read", rd.get("unread") == 0, rd)
+
+print("\n[6] background monitoring + account selection")
+mon, _ = get("/api/monitor")
+ok("background monitor is running", mon.get("running") is True, mon.get("running"))
+ok("monitor reports account list", isinstance(mon.get("sources"), list))
+src, _ = post("/api/sources", json.dumps({
+    "name": "Gmail — test", "kind": "imap", "host": "imap.gmail.com", "port": 993,
+    "username": "mailtrace.test@example.com", "secret": "not-a-real-app-password",
+    "folders": ["INBOX"], "mode": "monitor", "interval_min": 15, "enabled": True,
+    "authorization": "test consent"}).encode(), "application/json")
+sid = src["id"]
+ok("account created", bool(sid), src)
+ok("secret is never returned by the API", "secret" not in src and src.get("has_secret") is True)
+acc, _ = get("/api/accounts")
+mine = [a for a in acc["accounts"] if a["id"] == sid]
+ok("account appears in /api/accounts", len(mine) == 1)
+ok("account is selected for monitoring", bool(mine) and mine[0]["selected"] is True, mine and mine[0])
+ok("monitoring mode stored", bool(mine) and mine[0]["mode"] == "monitor", mine and mine[0]["mode"])
+put("/api/sources/" + sid, {"enabled": False})
+acc2, _ = get("/api/accounts")
+mine2 = [a for a in acc2["accounts"] if a["id"] == sid][0]
+ok("deselecting an account persists", mine2["selected"] is False, mine2["selected"])
+put("/api/sources/" + sid, {"enabled": True, "mode": "monitor"})
+acc3, _ = get("/api/accounts")
+ok("re-selecting an account persists", [a for a in acc3["accounts"] if a["id"] == sid][0]["selected"] is True)
+
+tst, _ = post("/api/sources/test", json.dumps({"host": "imap.gmail.com", "port": 993,
+                                               "username": "nobody@example.com", "secret": "x"}).encode(),
+              "application/json")
+ok("connection failure is reported, not crashed", tst.get("ok") is False and bool(tst.get("error")), tst)
+ok("connection failure has a readable message", isinstance(tst.get("error"), str) and len(tst["error"]) > 8, tst.get("error"))
+sc, _ = post("/api/monitor/scan", json.dumps({"mode": "incremental"}).encode(), "application/json")
+ok("scan-now accepts the request", isinstance(sc.get("jobs"), list), sc)
+time.sleep(12)
+mon2, _ = get("/api/monitor")
+mine3 = [a for a in mon2["sources"] if a["id"] == sid][0]
+ok("failed scan records a real error on the account", bool(mine3.get("last_error")), mine3.get("last_error"))
+errn = [n for n in get("/api/notifications?limit=100")[0]["items"] if n["kind"] == "error"]
+ok("failed scan produced a notification", len(errn) >= 1, len(errn))
+ok("checkpoint stays empty while nothing was fetched (no fake progress)",
+   isinstance(mine3.get("checkpoints"), dict) and mine3["checkpoints"] == {}, mine3.get("checkpoints"))
+off, _ = post("/api/monitor/enable?enabled=false")
+ok("monitor can be paused", off.get("enabled") is False, off)
+on, _ = post("/api/monitor/enable?enabled=true")
+ok("monitor can be resumed", on.get("enabled") is True, on)
+req = urllib.request.Request(BASE + "/api/sources/" + sid, method="DELETE")
+with urllib.request.urlopen(req, timeout=60) as r:
+    ok("account removed", r.status == 200)
+acc4, _ = get("/api/accounts")
+ok("removed account is gone", not [a for a in acc4["accounts"] if a["id"] == sid])
 
 print("\n%s %d/%d" % ("PASS" if F == 0 else "FAIL", P, P + F))
 sys.exit(1 if F else 0)

@@ -281,9 +281,9 @@
     // 4. headline decode (real text only)
     if (!OFF) {
       var h = host.querySelector(".page-head h1");
-      if (h) scramble(h, 460);
+      if (h && !h.__mtScrambled) { h.__mtScrambled = 1; scramble(h, 460); }
       var eb = host.querySelector(".page-head .eyebrow");
-      if (eb) scramble(eb, 320);
+      if (eb && !eb.__mtScrambled) { eb.__mtScrambled = 1; scramble(eb, 320); }
     }
     // 5. parallax targets
     parCollect(host);
@@ -324,7 +324,7 @@
   function reveal(scope) {                    // coalesced: views mutate repeatedly while graphs render
     pending = scope || doc;
     if (revTimer) return;
-    revTimer = setTimeout(function () { revTimer = 0; revealNow(pending); }, 60);
+    revTimer = setTimeout(function () { revTimer = 0; revealNow(pending); }, 120);
   }
   var revTimer = 0, pending = null;
   function revealNow(scope) {
@@ -361,10 +361,31 @@
     bind: bind, reveal: reveal, orbs: orbs, off: OFF, quality: Q
   };
 
+  /* ------------------------------------------------------------------ 3D snake backdrop -------- */
+  var snake = null;
+  function mountSnake() {
+    if (snake || OFF || !w.MTSnake) return;
+    var layer = doc.getElementById("mt-snake");
+    if (!layer) {
+      layer = doc.createElement("div");
+      layer.id = "mt-snake";
+      layer.className = "mt-snake-layer";
+      doc.body.insertBefore(layer, doc.body.firstChild);
+    }
+    try {
+      snake = w.MTSnake.mount(layer, {});           // null when WebGL/quality/reduced-motion says no
+      if (!snake) layer.remove();
+    } catch (e) {
+      snake = null;
+      layer.remove();
+    }
+  }
+
   function start() {
     orbs();
     bind();
     if (fx.bg) fx.bg();
+    mountSnake();
     setTimeout(function () { boot.end(); }, 4200);   // hard cap: the UI must never stay blocked
   }
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", start); else start();

@@ -791,8 +791,10 @@ def start_imap_job(sid: str, actor: str, mode: str = "backfill", limit: int = 0,
     def run():
         try:
             _run_stream(job, stream(), "imap", bool(src.get("unwrap", True)))
+            if job.error:                       # surfaced by the job itself (connect/auth/read failure)
+                _update_source(sid, last_error=str(job.error)[:400], last_run=_now())
         except Exception as e:
-            _update_source(sid, last_error=str(e), last_run=_now())
+            _update_source(sid, last_error=str(e)[:400], last_run=_now())
     threading.Thread(target=run, daemon=True, name=f"job-{job.id}").start()
     return job.to_dict()
 
@@ -869,12 +871,48 @@ class Monitor(threading.Thread):
         self._last: Dict[str, float] = {}
         self._idle: Dict[str, IdleWatcher] = {}
         self.enabled = True
+        self.started_at: Optional[str] = None
+        self.last_tick: Optional[str] = None
+        self.last_catchup: Optional[str] = None
 
     def wake(self): self._wake.set()
     def stop(self): self._stop.set(); self._wake.set()
 
+    def set_enabled(self, flag: bool) -> None:
+        self.enabled = bool(flag)
+        if flag: self.wake()
+        else:                                   # stop every IDLE connection; the loop then idles
+            for sid, w in list(self._idle.items()):
+                w.stop(); w.join(timeout=5); self._idle.pop(sid, None)
+
+    def catch_up(self, actor: str = "monitor") -> List[str]:
+        """Startup catch-up: scan every SELECTED account once, right now, so messages that arrived
+        while MailTrace AI was closed are analysed before the user does anything.
+        Uses the stored UID checkpoint, so nothing already processed is fetched again."""
+        started = []
+        for src in list_sources():
+            if not src.get("enabled") or src.get("mode") not in ("monitor", "idle"):
+                continue
+            if src.get("mode") == "idle":
+                continue                         # IDLE watchers backfill themselves on connect
+            if any(j.source_id == src["id"] for j in _jobs.values()):
+                continue
+            first = not src.get("state") or not any(k.startswith("last_uid:") for k in src["state"])
+            try:
+                started.append(start_imap_job(src["id"], actor=actor, mode="backfill" if first else "incremental")["id"])
+            except Exception as e:
+                _update_source(src["id"], last_error=str(e))
+            self._last[src["id"]] = time.time()
+        self.last_catchup = _now()
+        return started
+
     def run(self):
         time.sleep(3)
+        self.started_at = _now()
+        try:
+            self.catch_up()                      # "check mail that arrived since the last checkpoint"
+        except Exception as e:
+            log.warning("startup catch-up failed: %s", e)
         while not self._stop.is_set():
             try:
                 self._tick()
@@ -884,6 +922,7 @@ class Monitor(threading.Thread):
 
     def _tick(self):
         if not self.enabled: return
+        self.last_tick = _now()
         srcs = list_sources()
         # IDLE watchers: start for idle sources, stop for the rest
         want = {s["id"] for s in srcs if s.get("enabled") and s.get("mode") == "idle"}
@@ -906,6 +945,64 @@ class Monitor(threading.Thread):
 
 
 _monitor = Monitor()
+
+
+def monitor_status() -> Dict[str, Any]:
+    """Everything the UI needs to show monitoring state — all of it read from live engine state."""
+    jobs = [j.to_dict() for j in _jobs.values()]
+    out = []
+    for s in list_sources():
+        st = s.get("state") or {}
+        uids = {k.split(":", 1)[1]: int(v) for k, v in st.items() if k.startswith("last_uid:")}
+        active = next((j["id"] for j in jobs if j.get("source_id") == s["id"] and j.get("status") not in ("done", "error", "cancelled")), None)
+        due_in = None
+        if s.get("enabled") and s.get("mode") == "monitor":
+            interval = max(1, int(s.get("interval_min") or 5)) * 60
+            due_in = max(0, int(_monitor._last.get(s["id"], 0) + interval - time.time()))
+        out.append({
+            "id": s["id"], "name": s["name"], "username": s.get("username"), "host": s.get("host"),
+            "port": s.get("port"), "folders": s.get("folders") or ["INBOX"], "mode": s.get("mode"),
+            "enabled": bool(s.get("enabled")), "interval_min": s.get("interval_min"),
+            "last_run": s.get("last_run"), "last_error": s.get("last_error"), "since": s.get("since"),
+            "checkpoints": uids, "selected": bool(s.get("enabled")) and s.get("mode") in ("monitor", "idle"),
+            "has_secret": s.get("has_secret"), "active_job": active, "due_in_s": due_in,
+            "watching": s["id"] in [sid for sid, w in _monitor._idle.items() if w.is_alive()],
+        })
+    selected = [x for x in out if x["selected"]]
+    return {
+        "running": _monitor.is_alive(), "enabled": _monitor.enabled,
+        "started_at": _monitor.started_at, "last_tick": _monitor.last_tick, "last_catchup": _monitor.last_catchup,
+        "accounts": len(out), "selected": len(selected),
+        "sources": out, "active_jobs": jobs,
+        "idle_watchers": [sid for sid, w in _monitor._idle.items() if w.is_alive()],
+    }
+
+
+def scan_now(sid: Optional[str] = None, actor: str = "analyst", mode: str = "incremental") -> List[Dict[str, Any]]:
+    """Scan the selected account(s) on demand using the stored checkpoint (no duplicates)."""
+    out = []
+    for src in list_sources():
+        if not src.get("enabled") or src.get("mode") not in ("monitor", "idle", "once"):
+            continue
+        if sid and src["id"] != sid:
+            continue
+        if any(j.source_id == src["id"] for j in _jobs.values()):
+            out.append({"source_id": src["id"], "error": "a scan for this account is already running"})
+            continue
+        first = not src.get("state") or not any(k.startswith("last_uid:") for k in src["state"])
+        try:
+            out.append(start_imap_job(src["id"], actor=actor, mode="backfill" if first else mode))
+        except Exception as e:
+            out.append({"source_id": src["id"], "error": str(e)})
+        _monitor._last[src["id"]] = time.time()
+    if not out:
+        out = [{"error": "no account is selected for monitoring"}]
+    return out
+
+
+def set_monitor_enabled(flag: bool) -> bool:
+    _monitor.set_enabled(flag)
+    return _monitor.enabled
 
 
 def start_monitor() -> None:

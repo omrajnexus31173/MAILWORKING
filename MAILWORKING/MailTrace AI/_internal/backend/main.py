@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer.engine import analyze_email
 from analyzer import intel, content as content_mod
 from analyzer.common import load_org_profile, save_org_profile, load_settings, save_settings, DATA_DIR
-import store, report, ingest
+import store, report, ingest, notify
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 FRONTEND = os.path.join(os.path.dirname(ROOT), "frontend")
@@ -32,6 +32,15 @@ def _publish(evt: Dict[str, Any]):
     for q in list(_subscribers):
         try: _loop.call_soon_threadsafe(q.put_nowait, evt)
         except Exception: pass
+    # persisted notification history (real events only — counts are counted from stored cases)
+    try:
+        n = notify.consume(evt)
+        if n and _loop is not None:
+            for q in list(_subscribers):
+                try: _loop.call_soon_threadsafe(q.put_nowait, {"type": "notify", "notification": n, "ts": time.time()})
+                except Exception: pass
+    except Exception as e:
+        logging.getLogger("uvicorn.error").warning("notify failed: %s", e)
 
 @app.on_event("startup")
 async def _startup():
@@ -43,7 +52,12 @@ async def _startup():
     logging.getLogger("uvicorn.error").info("MailTrace AI: %d cases in store, %s", store.count_cases(), "OFFLINE mode" if intel.OFFLINE else "live enrichment enabled")
     threading.Thread(target=intel.refresh_tor, daemon=True).start()
     ingest.set_publisher(_publish)
+    notify.init()
+    try: notify.clear(300)          # keep the newest 300 events so the history file stays small
+    except Exception: pass
     ingest.start_monitor()                        # polls / IDLEs the configured mailboxes in the background
+    # catch-up: the monitor thread scans every SELECTED account a few seconds after boot, so mail
+    # that arrived while the app was closed is analysed and on the dashboard without user action.
 
 def _actor(x_analyst: Optional[str]) -> str:
     return (x_analyst or "analyst").strip()[:60]
@@ -468,6 +482,59 @@ def jobs_cancel(jid: str):
     return {"ok": True}
 
 # ---- frontend ----
+# ---------------------------------------------------------- notifications (real events only) ----
+@app.get("/api/notifications")
+def notifications_list(limit: int = 60, unread: bool = False):
+    return {"items": notify.list_notifications(limit=limit, unread_only=unread), "unread": notify.unread_count()}
+
+
+class ReadIn(BaseModel):
+    id: Optional[str] = None
+    all: bool = False
+
+
+@app.post("/api/notifications/read")
+def notifications_read(body: ReadIn):
+    return {"updated": notify.mark_read(body.id, body.all), "unread": notify.unread_count()}
+
+
+# --------------------------------------------------- background monitoring / account selection ----
+@app.get("/api/monitor")
+def monitor_status():
+    """Live state of the background monitor + every configured account (selected / not selected)."""
+    return ingest.monitor_status()
+
+
+@app.post("/api/monitor/enable")
+def monitor_enable(enabled: bool = True):
+    return {"enabled": ingest.set_monitor_enabled(enabled)}
+
+
+class ScanIn(BaseModel):
+    mode: Optional[str] = "incremental"     # incremental (since last checkpoint) | backfill (since `since` date)
+
+
+@app.post("/api/monitor/scan")
+def monitor_scan(body: ScanIn = None, x_analyst: Optional[str] = Header(None)):
+    """Scan every SELECTED account now (dedupe via the stored UID checkpoint)."""
+    body = body or ScanIn()
+    return {"jobs": ingest.scan_now(actor=_actor(x_analyst), mode=body.mode or "incremental")}
+
+
+@app.post("/api/sources/{sid}/scan")
+def source_scan(sid: str, body: ScanIn = None, x_analyst: Optional[str] = Header(None)):
+    if not ingest.get_source(sid):
+        raise HTTPException(404, "source not found")
+    body = body or ScanIn()
+    return {"jobs": ingest.scan_now(sid=sid, actor=_actor(x_analyst), mode=body.mode or "incremental")}
+
+
+@app.get("/api/accounts")
+def accounts_list():
+    """Accounts (mail sources) enriched with their monitoring state for the Mail Accounts page."""
+    return {"accounts": ingest.monitor_status()["sources"], "monitor": ingest.monitor_status()}
+
+
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
 @app.get("/", response_class=HTMLResponse)

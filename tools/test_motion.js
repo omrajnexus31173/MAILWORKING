@@ -180,10 +180,105 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     const items = doc.querySelectorAll(".tl-item");
     return items.length > 0 && items[0].style.getPropertyValue("--i") !== "";
   })(), doc.querySelectorAll(".tl-item").length + " items");
+  ok("no case block left invisible", doc.getElementById("view").querySelectorAll("[data-reveal]:not(.is-in)").length === 0,
+    doc.getElementById("view").querySelectorAll("[data-reveal]:not(.is-in)").length + " stuck");
+  const hero = doc.getElementById("view").querySelector(".verdict-hero");
+  ok("threat-result hero rendered", !!hero);
+  ok("hero carries a severity band", !!hero && /(malicious|suspicious|clean)/.test(hero.className), hero && hero.className);
+  ok("hero states the verdict", !!hero && /(MALICIOUS|SUSPICIOUS|CLEAN)/.test(hero.textContent), hero && hero.textContent.slice(0, 60));
+  ok("hero shows real NLP confidence or 'unavailable'", !!hero && /% phishing|unavailable/.test(hero.textContent), hero && hero.textContent.slice(-140));
+  ok("hero counts findings + indicators", !!hero && /Findings/.test(hero.textContent) && /Indicators/.test(hero.textContent));
+  ok("background-mode control present", !!doc.getElementById("mt-bg-btn"));
 
-  console.log("\n[7] every route renders (real data, no errors)");
+  console.log("\n[7] 3D snake (procedural, WebGL)");
+  ok("snake module loaded", !!win.MTSnake);
+  const holder = doc.createElement("div");
+  holder.style.cssText = "position:fixed;left:0;top:0;width:900px;height:600px";
+  doc.body.appendChild(holder);
+  let renders = 0;
+  const RealRenderer = win.THREE.WebGLRenderer;
+  win.THREE.WebGLRenderer = function () {          // jsdom has no GPU: fake the renderer, keep the maths
+    this.domElement = doc.createElement("canvas");
+    this.setPixelRatio = () => {}; this.setSize = () => {}; this.setClearColor = () => {};
+    this.render = () => { renders++; }; this.dispose = () => {};
+  };
+  const sn = win.MTSnake.mount(holder, {});
+  if (REDUCE) {
+    ok("reduced-motion: snake is not mounted", sn === null && !doc.getElementById("mt-snake"));
+  } else {
+    ok("snake mounts", !!sn);
+    ok("snake body is long (segments)", !!sn && sn.stats().segments >= 40, sn && sn.stats());
+    const s1 = sn && sn.sample();
+    await wait(700);
+    const s2 = sn && sn.sample();
+    ok("snake render loop runs", renders > 5, renders + " frames");
+    ok("snake head actually moves", s1 && s2 && (Math.abs(s1.head[0] - s2.head[0]) + Math.abs(s1.head[1] - s2.head[1])) > 0.05,
+       JSON.stringify([s1 && s1.head, s2 && s2.head]));
+    ok("body stays connected (segment spacing sane)", s2 && s2.spacing > 0.3 && s2.spacing < 1.4, s2 && s2.spacing);
+    ok("body is long in world units", s2 && s2.chain > 20, s2 && s2.chain);
+    sn.dispose();
+    ok("snake disposes (canvas removed)", holder.querySelectorAll("canvas").length === 0);
+  }
+  win.THREE.WebGLRenderer = RealRenderer;
+  holder.remove();
+
+  console.log("\n[8] mail accounts page (Gmail monitoring)");
+  const acct = await (await fetch(BASE + "/api/sources", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Gmail — ui-test", kind: "imap", host: "imap.gmail.com", port: 993,
+      username: "ui.test@gmail.com", secret: "not-real", folders: ["INBOX"], mode: "monitor",
+      interval_min: 10, enabled: true, authorization: "test" }) })).json();
+  ok("test account created via the API", !!acct.id, acct);
+  win.location.hash = "#/accounts";
+  await wait(2200);
+  const v3 = doc.getElementById("view");
+  ok("accounts page renders the monitoring bar", !!v3.querySelector(".mon-bar"));
+  ok("account card rendered", v3.querySelectorAll(".acct").length >= 1, v3.querySelectorAll(".acct").length);
+  const acctEl = v3.querySelector(`.acct[data-id="${acct.id}"]`);
+  ok("card for the new account is rendered", !!acctEl, "no card for " + acct.id);
+  ok("card shows provider + address", !!acctEl && /ui\.test@gmail\.com/.test(acctEl.textContent), acctEl && acctEl.textContent.slice(0, 80));
+  ok("card shows a status pill", !!acctEl.querySelector(".pill"), acctEl.querySelector(".pill") && acctEl.querySelector(".pill").textContent);
+  ok("card shows last-checked / next-check state", /never|ago/.test(acctEl.textContent));
+  ok("connect form present", !!doc.getElementById("ac-mail") && !!doc.getElementById("ac-pass"));
+  ok("Gmail preset is prefilled", doc.getElementById("ac-host").value === "imap.gmail.com", doc.getElementById("ac-host").value);
+  // selection toggle → persisted through the API
+  const sw = acctEl.querySelector('[data-act="select"]');
+  sw.checked = false;
+  sw.dispatchEvent(new win.Event("change", { bubbles: true }));
+  await wait(1600);
+  const after = await (await fetch(BASE + "/api/accounts")).json();
+  const row = (after.accounts || []).find(a => a.id === acct.id);
+  ok("deselect through the UI persists server-side", row && row.selected === false, row && row.selected);
+  // modal confirm for the destructive action
+  const del = doc.querySelector(`.acct[data-id="${acct.id}"] [data-act="remove"]`);
+  del.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+  await wait(400);
+  ok("styled confirm modal replaces window.confirm", !!doc.querySelector(".mt-modal"));
+  doc.querySelector(".mt-modal [data-no]").dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+  await wait(500);
+  ok("modal closes without deleting", !doc.querySelector(".mt-modal.on"));
+
+  console.log("\n[9] notification centre");
+  const bellBtn = doc.getElementById("mt-bell");
+  ok("notification bell in the sidebar", !!bellBtn);
+  bellBtn.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+  await wait(900);
+  ok("notification panel opens", !!doc.querySelector(".mt-panel.on"));
+  const nItems = doc.querySelectorAll(".mt-panel .mt-n").length;
+  ok("history lists real events", nItems > 0, nItems + " items");
+  ok("history items carry severity + time", !!doc.querySelector(".mt-panel .mt-n [class*=sev-], .mt-panel .mt-n .ico"));
+  doc.getElementById("mt-close").dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+  await wait(500);
+  ok("notification panel closes", !doc.querySelector(".mt-panel.on"));
+  // a fresh notification pops a toast through the SSE bridge
+  await fetch(BASE + "/api/notifications/read", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ all: true }) });
+  if (win.MTConsole) win.MTConsole.toast({ title: "New email analysis completed", body: "2 malicious · 1 suspicious · 1 clean", severity: "critical", account: "ui.test@gmail.com" });
+  await wait(300);
+  ok("toast is rendered with severity styling", !!doc.querySelector("#toast .tst.sev-critical"));
+
+  console.log("\n[10] every route renders (real data, no errors)");
   const errsBefore = errors.length;
-  for (const r of ["dashboard", "sources", "mailboxes", "cases", "campaigns", "graph", "lookup", "settings", "analyze"]) {
+  for (const r of ["dashboard", "sources", "accounts", "mailboxes", "cases", "campaigns", "graph", "lookup", "settings", "analyze"]) {
     win.location.hash = "#/" + r;
     await wait(1400);
     const txt = doc.getElementById("view").textContent.trim();
@@ -191,7 +286,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   }
   ok("no errors across the route sweep", errors.length === errsBefore, errors.slice(errsBefore, errsBefore + 3).join(" | "));
 
-  console.log("\n[8] console health");
+  console.log("\n[11] console health");
   ok("no console/js errors", errors.length === 0, errors.slice(0, 4).join(" | "));
 
   console.log(`\n${fail === 0 ? "PASS" : "FAIL"} ${pass}/${pass + fail}`);

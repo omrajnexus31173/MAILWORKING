@@ -123,6 +123,8 @@ function connectEvents() {
   es.addEventListener("alert", e => { const d = JSON.parse(e.data); if (d.job_id && window._jobQuiet) { pushQuiet(d, true); } else push(e, true); });
   es.addEventListener("case", e => { const d = JSON.parse(e.data); if (d.job_id && window._jobQuiet) { pushQuiet(d, false); } else push(e, false); });
   es.addEventListener("job", e => onJobEvent(JSON.parse(e.data).job));
+  es.addEventListener("notify", e => { if (window.MTConsole) window.MTConsole.onEvent(JSON.parse(e.data), "notify"); });
+  es.addEventListener("job-done", e => { const d = JSON.parse(e.data); if (window.MTConsole) window.MTConsole.onEvent(d, "job-done"); });
   es.addEventListener("job-done", e => { const j = JSON.parse(e.data).job; onJobEvent(j); toast(`Import ${j.status}: ${j.label}`, `${j.analysed} analysed · ${j.malicious} malicious · ${j.duplicates} duplicates · ${j.errors} errors`, j.malicious > 0); if (location.hash.startsWith("#/sources")) routes.sources(); else if (location.hash.startsWith("#/dashboard")) routes.dashboard(); });
   // during bulk jobs, don't flood the feed with a toast per email — feed items only, no toasts
   const pushQuiet = (d, alert) => {
@@ -462,10 +464,11 @@ routes.dashboard = async () => {
     <div class="hero"><div class="card">${sk(4)}<div class="skel tall"></div></div><div class="card">${sk(6)}</div></div>
     <div class="card pad0" style="margin:16px 0"><div class="skel tall" style="height:clamp(320px,48vh,470px);margin:0"></div></div>
     <div class="grid g32"><div class="card">${sk(5)}</div><div class="card">${sk(4)}</div></div>`;
-  const [st, cases, camps, health, bar, hot] = await Promise.all([
+  const [st, cases, camps, health, bar, hot, mon] = await Promise.all([
     api("/api/stats" + mbQ()), api("/api/cases?limit=12" + mbQ("&")), api("/api/campaigns" + mbQ()),
     api("/api/health"), mailboxBar(() => routes.dashboard()),
-    api("/api/geo/hotspots" + mbQ()).catch(() => ({ points: [], arcs: [], totals: {}, countries: [] }))
+    api("/api/geo/hotspots" + mbQ()).catch(() => ({ points: [], arcs: [], totals: {}, countries: [] })),
+    api("/api/monitor").catch(() => ({ enabled: false, accounts: 0, selected: 0, sources: [], active_jobs: [] }))
   ]);
   const mal = (st.by_verdict.malicious || 0) + (st.by_verdict.likely_malicious || 0);
   const m = health.model || {};
@@ -485,6 +488,15 @@ routes.dashboard = async () => {
       </div>
     </div>
     ${bar}
+
+    <div class="card mon-bar" data-reveal>
+      <div class="mon-dot ${mon.enabled && mon.selected ? "on" : ""}"></div>
+      <div><b>${mon.enabled ? (mon.selected ? "Monitoring " + mon.selected + " of " + mon.accounts + " account(s)" : "Monitoring idle — no account selected") : "Monitoring paused"}</b>
+        <span class="mini">${mon.last_catchup ? `startup catch-up ${esc(mon.last_catchup)} · ` : ""}${mon.last_tick ? `last scheduler check ${esc(mon.last_tick)} · ` : ""}${(mon.active_jobs || []).length} scan(s) running · ${(mon.idle_watchers || []).length} push connection(s)</span></div>
+      <div class="sp"></div>
+      <a class="btn sm" href="#/accounts">◉ Mail Accounts</a>
+      ${mon.selected ? `<button class="btn sm" id="dash-scan">⇊ Scan now</button>` : ""}
+    </div>
 
     <div class="hero" data-reveal>
       <div class="card accent" style="display:flex;flex-direction:column;justify-content:center;gap:12px">
@@ -538,6 +550,15 @@ routes.dashboard = async () => {
     </div>`;
 
   bindMailboxBar(() => routes.dashboard());
+  const dashScan = $("#dash-scan");
+  if (dashScan) dashScan.onclick = async e => {
+    e.target.disabled = true; e.target.textContent = "Scanning…";
+    try { const r = await api("/api/monitor/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "incremental" }) });
+      const bad = (r.jobs || []).filter(j => j.error);
+      toast(bad.length ? "Scan could not start" : "Scan started", bad.length ? bad[0].error : "fetching new mail since the last checkpoint", !!bad.length);
+      setTimeout(() => routes.dashboard(), 1500);
+    } catch (err) { toast("Scan failed", err.message, true); e.target.disabled = false; e.target.textContent = "⇊ Scan now"; }
+  };
   view.querySelectorAll("[data-case]").forEach(el => el.onclick = () => location.hash = "#/case/" + el.dataset.case);
   // animated counters + risk needle (real values only)
   view.querySelectorAll("[data-count]").forEach(el => window.MTfx.count(el, parseFloat(el.dataset.count) || 0, { decimals: parseInt(el.dataset.dec || 0) }));
@@ -689,6 +710,40 @@ routes.case = async cid => {
   try { renderCase(await api("/api/cases/" + cid)); } catch (e) { view.innerHTML = `<div class="empty">Case not found</div>`; }
 };
 
+/* Threat result identity: MALICIOUS / SUSPICIOUS / CLEAN with the real evidence behind it.
+   Nothing is invented — missing confidence or NLP output is shown as unavailable. */
+function verdictHero(r, c) {
+  const s = r.score, v = s.verdict;
+  const band = (v === "malicious" || v === "likely_malicious") ? "malicious" : (v === "suspicious" ? "suspicious" : "clean");
+  const title = band === "malicious" ? "MALICIOUS" : band === "suspicious" ? "SUSPICIOUS" : "CLEAN / LOW RISK";
+  const expl = band === "malicious"
+    ? "Treat this message as hostile. Do not click links, open attachments or reply — evidence and indicators are preserved below for blocking and LEA hand-off."
+    : band === "suspicious"
+      ? "Indicators are mixed. Verify the sender through a second channel before acting on any request in this message."
+      : "No credible threat indicators were found: authentication, links, attachments and sender infrastructure check out.";
+  const nlp = (r.content && r.content.nlp) ? r.content.nlp.phishing_probability : null;
+  const f = r.findings || [];
+  const n = sev => f.filter(x => String(x.severity || "").toLowerCase() === sev).length;
+  const ioc = r.iocs || {};
+  const iocN = ["sender", "reply_to", "return_path", "origin_ip", "domains", "urls", "attachment_hashes", "crypto_wallets", "upi_ids", "phones"]
+    .reduce((a, k) => a + (ioc[k] ? (Array.isArray(ioc[k]) ? ioc[k].length : 1) : 0), 0);
+  return `<div class="verdict-hero ${band}">
+    <div class="vh-mark"><i></i></div>
+    <div class="vh-main">
+      <div class="vh-top"><b>${title}</b><span class="vh-score" style="color:${scoreColor(s.score)}">${Math.round(s.score)}<small>/100</small></span>
+        <span class="tag">${esc(s.label)}</span>${r.threat && r.threat.primary ? `<span class="tag">${esc(r.threat.primary.replace(/_/g, " "))}</span>` : ""}
+        ${r.analysis_depth === "triage" ? '<span class="tag warn" title="no live DNS/GeoIP yet — enrichment pending">provisional · triage</span>' : ""}</div>
+      <div class="vh-expl">${esc(expl)}</div>
+    </div>
+    <div class="vh-stats">
+      <div><label>NLP confidence</label><b>${nlp != null ? (nlp * 100).toFixed(1) + "% phishing" : "unavailable"}</b></div>
+      <div><label>Findings</label><b>${f.length} · ${n("critical") + n("high")} high+</b></div>
+      <div><label>Indicators</label><b>${iocN}</b></div>
+      <div><label>Analysed</label><b class="mono">${fmtTs(r.analyzed_at)}</b></div>
+    </div>
+  </div>`;
+}
+
 function renderCase(c, adhoc = false) {
   const r = c.result, h = r.headers, a = r.attribution, s = r.score, au = h.auth, g = a.origin_geo || {};
   const authBadge = v => `<span class="badge ${v === "pass" ? "b-ok" : v === "fail" ? "b-critical" : v === "softfail" ? "b-high" : v === "none" || !v ? "b-mut" : "b-medium"}">${esc(v || "none")}</span>`;
@@ -701,6 +756,7 @@ function renderCase(c, adhoc = false) {
         <div class="mini">From <b>${esc(h.from.name || "")}</b> &lt;${esc(h.from.address)}&gt; → ${esc(h.to)}${h.reply_to.address ? ` · Reply-To <span style="color:#fdba74">${esc(h.reply_to.address)}</span>` : ""}</div></div>
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${adhoc ? "" : `<a class="btn" href="/api/cases/${c.id}/report.pdf" target="_blank" data-export="pdf" data-cid="${c.id}" data-name="MailTrace_${c.id}.pdf">📄 Forensic PDF</a><a class="btn sm" href="/api/cases/${c.id}/iocs.csv" data-export="csv" data-cid="${c.id}" data-name="iocs_${c.id}.csv">IOC CSV</a><a class="btn sm" href="/api/cases/${c.id}/report.json" target="_blank" data-export="json" data-cid="${c.id}" data-name="MailTrace_${c.id}.json">JSON</a><a class="btn sm" href="/api/cases/${c.id}/evidence.eml" data-export="eml" data-cid="${c.id}" data-name="evidence_${c.id}.eml">Evidence .eml</a>`}</div>
     </div>
+    ${verdictHero(r, c)}
     <div class="grid mt-seq" style="grid-template-columns:150px 1fr 1fr 1fr;margin-bottom:14px">
       <div class="card" style="display:flex;align-items:center;justify-content:center">${scoreRing(s.score, s.label)}</div>
       <div class="card"><h3>Classification</h3><div style="margin-bottom:6px">${verdictBadge(s.verdict, s.label)} <span class="badge b-mut">${esc(r.threat.primary.replace(/_/g, " "))}</span> ${r.threat.secondary.map(t => `<span class="badge b-mut">${esc(t.replace(/_/g, " "))}</span>`).join(" ")}</div>${r.threat.bec.length ? `<div class="mini">BEC patterns: ${r.threat.bec.map(esc).join(" · ")}</div>` : ""}<div style="margin-top:8px">${categoryBars(s.category_pct)}</div>${s.trust_credits?.length ? `<div class="mini" style="color:#86efac">Trust credits: ${s.trust_credits.map(esc).join("; ")}</div>` : ""}</div>
@@ -791,6 +847,10 @@ function recommendations(r) {
   out.push("Circulate a sanitised awareness note to the targeted user group; add lure to phishing-simulation library.");
   return out;
 }
+
+/* Mail Accounts: Gmail/IMAP connection, per-account monitoring selection, startup catch-up
+   and on-demand scans. Implemented in lib/console.js; all state comes from /api/monitor. */
+routes.accounts = () => (window.MTConsole ? window.MTConsole.accounts() : (location.hash = "#/dashboard"));
 
 routes.cases = async (arg = "") => {
   const qs = new URLSearchParams((location.hash.split("?")[1] || ""));
@@ -1075,7 +1135,13 @@ routes.settings = async () => {
     try { const r = await api("/api/settings", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({offline: $("#s-off").checked, analyst: $("#s-an").value.trim(), retention_days: parseInt($("#s-ret").value) || 180})}); if ($("#s-an").value.trim()) $("#analyst").value = $("#s-an").value.trim(); toast("Settings saved", r.offline_active ? "Offline mode is ON" : "Live enrichment is ON"); routes.settings(); } catch (e) { toast("Error", e.message, true); }
   };
   $("#s-reset").onclick = async () => {
-    if (!confirm("Delete ALL cases, indicators, campaigns, custody logs and sealed evidence files? This cannot be undone.")) return;
+    const yes = window.MTConsole
+      ? await window.MTConsole.confirm({
+          title: "Delete all case data?",
+          body: "<p class='mini'>This removes every case, indicator, campaign, custody log and sealed evidence file from the evidence store. Connected mail accounts and their credentials are kept.</p>",
+          ok: "Delete everything", danger: true })
+      : confirm("Delete ALL cases, indicators, campaigns, custody logs and sealed evidence files? This cannot be undone.");
+    if (!yes) return;
     try { const r = await api("/api/admin/reset", {method: "POST"}); toast("Case store reset", `${r.cases_deleted} cases · ${r.evidence_files_deleted} evidence files deleted`); } catch (e) { toast("Error", e.message, true); }
   };
   if (isDesktop()) { $("#s-open-data").onclick = () => window.pywebview.api.open_data_folder(); $("#s-open-log").onclick = () => window.pywebview.api.open_path(info.log); }
@@ -1089,7 +1155,21 @@ routes.settings = async () => {
     try { const s = await api("/api/settings"); if (s.settings?.analyst) $("#analyst").value = s.settings.analyst; } catch {}
     bootSay("detection engine ready");
   } catch { bootSay("backend unreachable — running offline"); }
+  try {
+    const mon = await api("/api/monitor");
+    const badge = $("#nav-acc");
+    if (badge) { badge.hidden = !mon.selected; badge.textContent = mon.selected || ""; }
+    bootSay(mon.selected ? "checking " + mon.selected + " monitored account(s) for new mail" : "no account selected for monitoring");
+  } catch {}
   if (window.MTmotion) window.MTmotion.boot.end();
+  if (window.MTConsole) {
+    window.MTConsole.bind({ $, esc, api, toast, view, scoreColor, fmtTs, verdictBadge, routes, vtrack });
+    window.MTConsole.refresh();
+    const bellBtn = document.getElementById("mt-bell");
+    if (bellBtn && window.Notification && Notification.permission === "default") {
+      bellBtn.addEventListener("click", () => Notification.requestPermission().catch(() => {}), { once: true });
+    }
+  }
   mbSet(mbGet()); connectEvents(); navigate();
   // any [data-reveal] block added later (async routes) fades in when it scrolls into view
   if (window.MTfx) {
