@@ -26,8 +26,8 @@ python3 tools/test_api.py                                # 51 assertions
 
 ```bash
 npm i jsdom@24            # only for this test; the app itself has no build step or dependencies
-node tools/test_motion.js            # 84 assertions — full motion path
-REDUCE=1 node tools/test_motion.js   # 74 assertions — with prefers-reduced-motion: reduce
+node tools/test_motion.js            # 89 assertions — full motion path
+REDUCE=1 node tools/test_motion.js   # 75 assertions — with prefers-reduced-motion: reduce
 ```
 
 * assets served, boot splash dismissed on the real health response, ambient orbs, motion tier

@@ -224,6 +224,16 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
        JSON.stringify([s1 && s1.head, s2 && s2.head]));
     ok("body stays connected (segment spacing sane)", s2 && s2.spacing > 0.3 && s2.spacing < 1.4, s2 && s2.spacing);
     ok("body is long in world units", s2 && s2.chain > 20, s2 && s2.chain);
+    const st = sn && sn.stats();
+    ok("body is ONE continuous mesh, not a chain of beads",
+      !!st && st.meshes === 1 && st.continuous === true, JSON.stringify(st));
+    ok("skin is real geometry (indexed triangles)", !!st && st.triangles > 800 && st.vertices > 400,
+      st && st.triangles + " tris / " + st.vertices + " verts");
+    ok("rings overlap, so the surface has no dotted gaps", s2 && s2.continuity < 1,
+      s2 && "maxGap " + s2.maxGap.toFixed(3) + " vs diameter " + (2 * s2.radius).toFixed(3));
+    ok("body tapers from head to tail tip",
+      win.MTSnake.radiusAt(0.24) > win.MTSnake.radiusAt(0.95) * 2.5,
+      win.MTSnake.radiusAt(0.24) + " vs " + win.MTSnake.radiusAt(0.95));
     sn.dispose();
     ok("snake disposes (canvas removed)", holder.querySelectorAll("canvas").length === 0);
   }
