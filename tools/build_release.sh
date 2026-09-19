@@ -19,7 +19,8 @@ git archive HEAD \
   | tar -x -C "$STAGE"
 
 # the launcher helpers next to the .exe too, so they are found from either folder
-cp Unblock-Windows.ps1 Unblock-Windows.bat Start-MailTrace-AI.bat Start-Engine-and-Open.bat "$APP/"
+cp Unblock-Windows.ps1 Unblock-Windows.bat Start-MailTrace-AI.bat Start-Engine-and-Open.bat \
+   Check-Runtime.ps1 Check-Runtime.bat "$APP/"
 
 # build manifest
 {
@@ -37,8 +38,41 @@ cp Unblock-Windows.ps1 Unblock-Windows.bat Start-MailTrace-AI.bat Start-Engine-a
 } > "$STAGE/BUILD-INFO.txt"
 
 rm -f "$OUT"
-( cd "$STAGE" && zip -rq "$OUT" . -x '*.git*' '*__pycache__*' '*.pyc' '*.zip' )
+# NOTE: never exclude '*.zip' here - _internal/base_library.zip is a zip file and is
+# required by the PyInstaller bootloader ("Failed to start embedded python interpreter!"
+# when it is missing). Only the two top-level archives are excluded, and they are not in
+# the git-archive paths anyway.
+( cd "$STAGE" && zip -rq "$OUT" . -x '*.git*' '*__pycache__*' '*.pyc' \
+    'MAILWORKING.zip' 'MailTrace-AI-FINAL-PRODUCTION.zip' )
 
 echo "built: $OUT"
 unzip -tq "$OUT" && echo "integrity: OK"
 unzip -l "$OUT" | tail -2
+
+# ---------------------------------------------------------------------------------
+# Completeness gate: the archive must contain EVERY file of the original, working
+# Windows package (MAILWORKING.zip) - this is what caught the missing
+# _internal/base_library.zip. Runtime data (db, key, evidence, uploads, cache) is
+# regenerated on first run and is intentionally not shipped.
+# ---------------------------------------------------------------------------------
+if [ -f "$ROOT/MAILWORKING.zip" ]; then
+  python3 - "$OUT" "$ROOT/MAILWORKING.zip" <<'PY'
+import sys, zipfile
+mine, ref = zipfile.ZipFile(sys.argv[1]), zipfile.ZipFile(sys.argv[2])
+SKIP = ("mailtrace.db", ".mailtrace.key", "intel_cache.json", "__pycache__", "evidence/", "uploads/")
+def subset(z, prefix):
+    return {n[len(prefix):] for n in z.namelist()
+            if n.startswith(prefix) and not n.endswith("/") and not any(s in n for s in SKIP)}
+ref_files = subset(ref, "MailTrace AI/")
+out_files = subset(mine, "MAILWORKING/MailTrace AI/")
+missing = sorted(ref_files - out_files)
+print("packaging gate: %d reference files, %d shipped" % (len(ref_files), len(out_files)))
+if missing:
+    print("FAIL - missing %d file(s) the Windows package needs:" % len(missing))
+    for f in missing[:20]:
+        print("   -", f)
+    sys.exit(1)
+print("packaging gate: OK - no file of the original package is missing")
+PY
+  [ $? -ne 0 ] && exit 1
+fi

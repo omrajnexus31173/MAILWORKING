@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import struct
 import sys
 import tempfile
 import zipfile
@@ -54,6 +55,8 @@ REQUIRED_FILES = [
     os.path.join("tools", "test_motion.js"),
     os.path.join("tools", "README.md"),
     os.path.join("tools", "build_release.sh"),
+    "Check-Runtime.bat",
+    "Check-Runtime.ps1",
 ]
 
 REQUIRED_DIRS = [
@@ -162,6 +165,69 @@ def main() -> int:
 
         exe = os.path.join(root, APP, "MailTrace AI.exe")
         check(os.path.getsize(exe) > 5_000_000, "MailTrace AI.exe is a real binary")
+
+        # ----- packaged Python runtime: what the PyInstaller bootloader needs -----
+        internal = os.path.join(root, APP, "_internal")
+        cookie = b"MEI\014\013\012\013\016"
+        toc_info = None
+        try:
+            with open(exe, "rb") as fh:
+                blob = fh.read()
+            at = blob.rfind(cookie)
+            magic, pkg, toc, toclen, pyvers, pylib = struct.unpack("!8sIIII64s", blob[at:at + 88])
+            pkgstart = len(blob) - pkg
+            names, p = [], 0
+            chunk = blob[pkgstart + toc: pkgstart + toc + toclen]
+            while p + 18 <= len(chunk):
+                sl = struct.unpack("!i", chunk[p:p + 4])[0]
+                typ = chunk[p + 17:p + 18]
+                names.append((typ.decode("latin1"), chunk[p + 18:p + sl].split(b"\0")[0].decode("utf-8", "replace")))
+                p += sl
+            toc_info = {
+                "pyvers": pyvers,
+                "pylib": pylib.rstrip(b"\0").decode(),
+                "contents": [n for t, n in names if t == "o" and n.startswith("pyi-contents-directory ")],
+                "pyz": [n for t, n in names if t == "z"],
+                "scripts": [n for t, n in names if t == "s"],
+            }
+        except Exception as exc:                                   # unreadable exe → reported below
+            toc_info = {"error": str(exc)}
+
+        check(bool(toc_info) and "error" not in toc_info, "EXE carries a readable PyInstaller archive",
+              toc_info.get("error", "") if toc_info else "no TOC")
+        if toc_info and "error" not in toc_info:
+            check(toc_info["pyvers"] == 312, "embedded Python version is 3.12", str(toc_info["pyvers"]))
+            check(bool(toc_info["pyz"]), "frozen module archive (PYZ) is present", str(toc_info["pyz"]))
+            check("mailtrace_desktop" in toc_info["scripts"], "launcher script is bundled",
+                  ", ".join(toc_info["scripts"]))
+            contents = toc_info["contents"][0].split()[-1] if toc_info["contents"] else "_internal"
+            check(os.path.isdir(os.path.join(root, APP, contents)),
+                  "contents directory '%s' exists" % contents)
+            check(os.path.isfile(os.path.join(internal, toc_info["pylib"])),
+                  "interpreter %s is in _internal" % toc_info["pylib"])
+
+        bl = os.path.join(internal, "base_library.zip")
+        bl_ok, bl_detail = False, "missing"
+        if os.path.isfile(bl) and zipfile.is_zipfile(bl):
+            with zipfile.ZipFile(bl) as z:
+                names_in = z.namelist()
+                bad = z.testzip()
+            core = [m for m in ("codecs.pyc", "os.pyc", "io.pyc", "encodings/__init__.pyc") if m in names_in]
+            bl_ok = bad is None and len(names_in) > 50 and len(core) >= 2
+            bl_detail = "%d modules, core: %s" % (len(names_in), ", ".join(core) or "MISSING")
+        check(bl_ok, "base_library.zip: Python core modules (missing = 'Failed to start embedded python interpreter!')",
+              bl_detail)
+
+        pyd = sorted(f for f in os.listdir(internal) if f.endswith(".pyd")) if os.path.isdir(internal) else []
+        need = {"_socket.pyd", "_ssl.pyd", "select.pyd", "_ctypes.pyd", "unicodedata.pyd"}
+        check(len(pyd) >= 15, "compiled stdlib extension modules (.pyd) shipped: %d" % len(pyd))
+        check(need.issubset(set(pyd)), "required extension modules present",
+              "missing: " + ", ".join(sorted(need - set(pyd))))
+        for dll in ("python312.dll", "sqlite3.dll", "VCRUNTIME140.dll"):
+            check(os.path.isfile(os.path.join(internal, dll)), "runtime %s" % dll)
+        for helper in ("Unblock-Windows.bat", "Start-MailTrace-AI.bat", "Start-Engine-and-Open.bat",
+                       "Check-Runtime.bat", "Check-Runtime.ps1"):
+            check(os.path.isfile(os.path.join(root, APP, helper)), "helper next to the exe: %s" % helper)
 
         failures = [r for r in results if not r[0]]
         for ok, label, detail in results:

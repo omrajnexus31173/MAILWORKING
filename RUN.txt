@@ -1,6 +1,16 @@
 MailTrace AI - FINAL PRODUCTION BUILD
 =====================================
 
+*** IF THE EXE SAYS "Failed to start embedded python interpreter!" - READ THIS ***
+That message means the PyInstaller runtime beside the .exe is incomplete. The file it needs is
+    MAILWORKING\MailTrace AI\_internal\base_library.zip      (1.2 MB, 155 Python core modules)
+If that file is missing, re-extract the zip WITH ITS FOLDER STRUCTURE (do not move the .exe out
+of its folder) - the .exe loads its whole runtime from _internal next to it.
+Verify in one click: double-click  Check-Runtime.bat  (in this folder and next to the exe).
+It checks base_library.zip, python312.dll, the compiled extension modules and the app payload,
+and prints PASS/FAIL for each. Nothing to install - the app is fully self-contained.
+The build now refuses to produce a release in which any file of the runtime is missing.
+
 *** IF WINDOWS REFUSES TO OPEN THE APP - READ THIS FIRST ***
 Windows marks every file extracted from a downloaded .zip as "came from the internet"
 ("Mark of the Web"). It then blocks the .NET / WebView2 components the MailTrace AI window
@@ -8,6 +18,8 @@ needs and the app fails to open with something like:
     "Failed to resolve Python.Runtime.Loader.Initialize"
     or the window simply never appears.
 FIX (one click): double-click  Unblock-Windows.bat  in this folder, then start the app.
+   Start-MailTrace-AI.bat finds the .exe relative to itself, so it works from this folder
+   AND from inside MAILWORKING\MailTrace AI\.
    (or double-click  Start-MailTrace-AI.bat  which unblocks and starts in one go)
    The same three helpers are also copied next to the .exe, inside MAILWORKING\MailTrace AI\.
 Manual alternatives:
@@ -19,6 +31,8 @@ Manual alternatives:
 
 CONTENTS (complete runnable project)
   MAILWORKING/MailTrace AI/            packaged app: MailTrace AI.exe + full _internal runtime
+                                       (base_library.zip, python312.dll, 20 extension modules,
+                                       pythonnet/WebView2, reportlab, PIL, sqlite3, OpenSSL)
       _internal/frontend/              UI: index.html, app.js, app.css, motion.css,
                                        lib/{fx,motion,geo,globe,graph,pipeline,snake,console}.js,
                                        data/{world,centroids}.js, vendor/three.min.js (offline)
