@@ -14,6 +14,22 @@ const toast = (title, body, alert = false) => {
   const el = document.createElement("div"); el.className = "tst" + (alert ? " alert" : "");
   el.innerHTML = `<b>${esc(title)}</b><span class="mini">${esc(body)}</span>`; $("#toast").appendChild(el); setTimeout(() => el.remove(), 6000);
 };
+/* Honest engine check: the packaged EXE may ship an older engine build. When that happens the
+   monitoring/notification endpoints do not exist — say so instead of failing silently. */
+const ENGINE_VERSION = "1.3.0";
+function engineBanner(ver) {
+  if (!ver || ver === ENGINE_VERSION || document.getElementById("mt-engbar")) return;
+  const b = document.createElement("div");
+  b.id = "mt-engbar"; b.className = "mt-engbar";
+  b.innerHTML = `<i>ⓘ</i><div><b>Engine ${esc(ver)} detected — monitoring features need ${ENGINE_VERSION}</b>
+    <span class="mini">Automatic Gmail/IMAP scanning, the startup catch-up scan and the notification history are provided by the
+    updated engine. Start it with <code>python -m uvicorn main:app --host 0.0.0.0 --port 8000</code> from
+    <code>_internal/backend</code>, then open <code>http://localhost:8000</code> — see RUN.txt.</span></div>
+    <button class="btn sm" id="mt-engbar-x">Dismiss</button>`;
+  document.body.insertBefore(b, document.body.firstChild);
+  b.querySelector("#mt-engbar-x").onclick = () => b.remove();
+}
+
 /* ------------------------------------------------------------ desktop bridge (pywebview) */
 const isDesktop = () => !!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.info === "function");
 // pywebview injects window.pywebview shortly AFTER page load; await this before using the bridge
@@ -468,7 +484,7 @@ routes.dashboard = async () => {
     api("/api/stats" + mbQ()), api("/api/cases?limit=12" + mbQ("&")), api("/api/campaigns" + mbQ()),
     api("/api/health"), mailboxBar(() => routes.dashboard()),
     api("/api/geo/hotspots" + mbQ()).catch(() => ({ points: [], arcs: [], totals: {}, countries: [] })),
-    api("/api/monitor").catch(() => ({ enabled: false, accounts: 0, selected: 0, sources: [], active_jobs: [] }))
+    api("/api/monitor").catch(e => (window.__engineLegacy = /404|405|Not Found|Method Not Allowed/i.test(e.message || ""), null))
   ]);
   const mal = (st.by_verdict.malicious || 0) + (st.by_verdict.likely_malicious || 0);
   const m = health.model || {};
@@ -490,12 +506,21 @@ routes.dashboard = async () => {
     ${bar}
 
     <div class="card mon-bar" data-reveal>
+      ${mon ? `
       <div class="mon-dot ${mon.enabled && mon.selected ? "on" : ""}"></div>
       <div><b>${mon.enabled ? (mon.selected ? "Monitoring " + mon.selected + " of " + mon.accounts + " account(s)" : "Monitoring idle — no account selected") : "Monitoring paused"}</b>
         <span class="mini">${mon.last_catchup ? `startup catch-up ${esc(mon.last_catchup)} · ` : ""}${mon.last_tick ? `last scheduler check ${esc(mon.last_tick)} · ` : ""}${(mon.active_jobs || []).length} scan(s) running · ${(mon.idle_watchers || []).length} push connection(s)</span></div>
       <div class="sp"></div>
       <a class="btn sm" href="#/accounts">◉ Mail Accounts</a>
       ${mon.selected ? `<button class="btn sm" id="dash-scan">⇊ Scan now</button>` : ""}
+      ` : `
+      <div class="mon-dot"></div>
+      <div><b>Mailbox monitoring needs the updated engine</b>
+        <span class="mini">This build is running an older engine, so automatic Gmail/IMAP scanning, the
+        startup catch-up scan and notification history are not available. Start the updated engine with
+        <code>python -m uvicorn main:app --host 0.0.0.0 --port 8000</code> from
+        <code>_internal/backend</code> and open <code>http://localhost:8000</code> (see RUN.txt).</span></div>
+      <div class="sp"></div><a class="btn sm" href="#/accounts">◉ Mail Accounts</a>`}
     </div>
 
     <div class="hero" data-reveal>
@@ -1154,13 +1179,14 @@ routes.settings = async () => {
   try { const h = await api("/api/health"); const m = h.model || {}; $("#model-info").textContent = `NLP: ${m.model || "?"} · acc ${m.accuracy ? (m.accuracy * 100).toFixed(1) + "%" : "?"} · AUC ${m.roc_auc || "?"}${h.offline ? " · OFFLINE" : ""}${h.desktop ? " · desktop" : ""}`;
     try { const s = await api("/api/settings"); if (s.settings?.analyst) $("#analyst").value = s.settings.analyst; } catch {}
     bootSay("detection engine ready");
+    if (h.version) engineBanner(h.version);
   } catch { bootSay("backend unreachable — running offline"); }
   try {
     const mon = await api("/api/monitor");
     const badge = $("#nav-acc");
     if (badge) { badge.hidden = !mon.selected; badge.textContent = mon.selected || ""; }
     bootSay(mon.selected ? "checking " + mon.selected + " monitored account(s) for new mail" : "no account selected for monitoring");
-  } catch {}
+  } catch { bootSay("older engine — mailbox monitoring unavailable"); }
   if (window.MTmotion) window.MTmotion.boot.end();
   if (window.MTConsole) {
     window.MTConsole.bind({ $, esc, api, toast, view, scoreColor, fmtTs, verdictBadge, routes, vtrack });

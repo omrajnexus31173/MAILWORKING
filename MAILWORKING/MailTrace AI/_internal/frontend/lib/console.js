@@ -101,8 +101,13 @@
     return C.api("/api/notifications?limit=60").then(function (d) {
       state.items = d.items || [];
       state.unread = d.unread || 0;
+      state.unavailable = false;
       render();
-    }).catch(function () {});
+    }).catch(function (e) {
+      state.items = []; state.unread = 0;
+      state.unavailable = /404|405|Not Found|Method Not Allowed/i.test(String(e && e.message)) ? "legacy" : "error";
+      render();
+    });
   }
   function render() {
     var badge = document.getElementById("mt-badge");
@@ -115,6 +120,13 @@
     if (!b) return;
     var sub = document.getElementById("mt-panel-sub");
     if (sub) sub.textContent = state.unread ? state.unread + " unread" : "all caught up";
+    if (state.unavailable === "legacy") {
+      b.innerHTML = '<div class="mt-empty"><div class="ico">ⓘ</div><b>Notification history needs the updated engine</b>' +
+        '<span class="mini">This engine build has no notification endpoint. Start the updated engine with ' +
+        '<code>python -m uvicorn main:app --host 0.0.0.0 --port 8000</code> from <code>_internal/backend</code> ' +
+        'to get automatic mailbox monitoring, startup catch-up scans and detection history (see RUN.txt).</span></div>';
+      return;
+    }
     if (!state.items.length) {
       b.innerHTML = '<div class="mt-empty"><div class="ico">◍</div><b>No notifications yet</b><span class="mini">Detection events appear here when a monitored mailbox is scanned or a high-risk email is analysed.</span></div>';
       return;
@@ -237,8 +249,19 @@
       state.monitor = mon;
       render_accounts(mon);
     }).catch(function (e) {
+      var legacy = /404|405|Not Found|Method Not Allowed/i.test(String(e && e.message));
       view.innerHTML = '<div class="page-head"><div><div class="eyebrow">Automatic mailbox monitoring</div><h1>Mail Accounts</h1></div></div>' +
-        '<div class="card err-state"><b>Could not load monitoring state</b><span class="mini">' + C.esc(e.message) + '</span><button class="btn" id="acc-retry">Retry</button></div>';
+        (legacy
+          ? '<div class="card err-state"><b>This engine build has no mailbox-monitoring API</b>' +
+            '<span class="mini">The window you are using is served by an older engine build (v1.2.0). Mail-account monitoring, ' +
+            'the startup catch-up scan and notification history were added in engine v1.3.0.</span>' +
+            '<div class="mini" style="margin-top:6px"><b>To use them:</b> open a terminal in ' +
+            '<code>MAILWORKING\\MailTrace AI\\_internal\\backend</code> and run' +
+            '<pre style="margin:6px 0">python -m uvicorn main:app --host 0.0.0.0 --port 8000</pre>' +
+            'then open <code>http://localhost:8000</code> in your browser. Everything else in this build ' +
+            '(analysis, 3D globe, snake, forensic graph, reports) works as-is.</div>' +
+            '<button class="btn" id="acc-retry">Retry</button></div>'
+          : '<div class="card err-state"><b>Could not load monitoring state</b><span class="mini">' + C.esc(e.message) + '</span><button class="btn" id="acc-retry">Retry</button></div>');
       var r = document.getElementById("acc-retry"); if (r) r.onclick = C.routes.accounts;
     });
   }

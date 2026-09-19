@@ -67,6 +67,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await new Promise(r => win.addEventListener("load", r));
   await wait(2500);
 
+  const engHealth = await (await fetch(BASE + "/api/health")).json();
+  const hasMonitor = (await fetch(BASE + "/api/monitor")).ok;
+  const hasNotif = (await fetch(BASE + "/api/notifications")).ok;
+  console.log("  • engine " + engHealth.version + " | /api/monitor " + (hasMonitor ? "yes" : "no") +
+              " | /api/notifications " + (hasNotif ? "yes" : "no"));
+
   console.log("\n[1] assets & boot");
   for (const p of ["/static/app.css", "/static/motion.css", "/static/lib/fx.js", "/static/lib/motion.js",
                    "/static/lib/globe.js", "/static/lib/graph.js", "/static/lib/pipeline.js", "/static/vendor/three.min.js"]) {
@@ -76,6 +82,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok("motion layer exposed (MTmotion)", !!win.MTmotion);
   ok("MTfx.reveal wrapped by motion layer", win.MTfx && /revealNow/.test(String(win.MTfx.reveal)));
   ok("boot splash dismissed after health check", !doc.getElementById("boot"), "boot still in DOM");
+  if (engHealth.version === "1.3.0") ok("no engine warning on the current engine", !doc.getElementById("mt-engbar"));
+  else ok("older engine shows an honest upgrade notice", !!doc.getElementById("mt-engbar"), "engine " + engHealth.version);
   if (REDUCE) {
     ok("reduced-motion: motion layer switched off", win.MTmotion && win.MTmotion.off === true);
     ok("reduced-motion: no ambient orbs", doc.querySelectorAll(".mt-orb").length === 0);
@@ -232,6 +240,30 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   win.location.hash = "#/accounts";
   await wait(2200);
   const v3 = doc.getElementById("view");
+  if (!hasMonitor) {
+    ok("legacy engine: accounts page explains the missing API instead of breaking",
+      /no mailbox-monitoring API/i.test(v3.textContent), v3.textContent.slice(0, 120));
+    ok("legacy engine: no console errors on the accounts page", errors.length === 0, errors.slice(0, 2).join(" | "));
+    console.log("\n[9] notification centre");
+    const bellL = doc.getElementById("mt-bell");
+    if (bellL) bellL.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    await wait(700);
+    ok("legacy engine: notification panel explains the requirement",
+      /updated engine/i.test(doc.getElementById("mt-panel-b").textContent));
+    doc.getElementById("mt-close").dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    await wait(400);
+    console.log("\n[10] every route renders (real data, no errors)");
+    for (const r of ["dashboard", "sources", "accounts", "mailboxes", "cases", "campaigns", "graph", "lookup", "settings", "analyze"]) {
+      win.location.hash = "#/" + r;
+      await wait(1300);
+      ok("#/" + r + " renders content", doc.getElementById("view").textContent.trim().length > 40);
+    }
+    console.log("\n[11] console health");
+    ok("no console/js errors (legacy engine)", errors.length === 0, errors.slice(0, 3).join(" | "));
+    console.log(`\n${fail === 0 ? "PASS" : "FAIL"} ${pass}/${pass + fail}`);
+    dom.window.close();
+    process.exit(fail ? 1 : 0);
+  }
   ok("accounts page renders the monitoring bar", !!v3.querySelector(".mon-bar"));
   ok("account card rendered", v3.querySelectorAll(".acct").length >= 1, v3.querySelectorAll(".acct").length);
   const acctEl = v3.querySelector(`.acct[data-id="${acct.id}"]`);
